@@ -1,0 +1,7 @@
+name = "StrongFieldDynamics"
+uuid = "ccdc07ee-8812-480c-8350-26ebb731057a"
+authors = ["Aloka Kumar Sahoo <aloka_s@ph.iitr.ac.in>"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.10"
