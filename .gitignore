@@ -5,5 +5,7 @@
 /docs/Manifest*.toml
 /docs/build/
 
+/deps/
+
 /.vscode/
 /.JuliaFormatter.toml
