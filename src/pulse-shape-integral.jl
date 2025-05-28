@@ -6,7 +6,7 @@ export sin2Sv
 @doc raw"""
 The pulse shape integral
 """
-function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ ; sign=1)
+function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
 
     integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*pulse.Sv(t, θ, pulse, a_electron, p_electron))
     return pulse.A₀ * exp(-im * sign * pulse.ϕ) * quadgk(integrand, 0.0, pulse.Tp, rtol=1e-8)[1]
@@ -16,8 +16,16 @@ end
 @doc raw"""
 The pulse shape integral
 """
-function F2_integral(pulse::Pulse, a_electron::AtomicElectron)
-    return zero(ComplexF64)
+function F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64)
+
+    function A2(t::Float64)
+        a = ( pulse.A₀ * pulse.f(t) * exp(-im * (pulse.ω * t + pulse.ϕ)) ) .* pulse.pol
+        return (a' * a)
+    end
+
+    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * pulse.Sv(t, θ, pulse, a_electron, p_electron) ) 
+
+    return quadgk(integrand, 0.0, pulse.Tp, rtol=1e-8)[1]
 end
 
 

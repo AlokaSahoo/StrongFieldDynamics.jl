@@ -2,11 +2,12 @@ using AssociatedLegendrePolynomials
 using SpecialFunctions
 using WignerSymbols
 
-export Pulse, AtomicElectron, ContinuumElectron, ContinuumSolution
+export Pulse, AtomicElectron, ContinuumElectron, ContinuumSolution, ClebschGordan
 
 struct Pulse
     I       ::Float64
     A₀      ::Float64               # 
+    # A       ::Function              # A(t) = A₀ f(t) exp(-iωt)
     λ       ::Float64
     ω       ::Float64
     np      ::Int64                 # number of cycles
