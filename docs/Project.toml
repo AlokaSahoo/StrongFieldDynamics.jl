@@ -1,6 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-StrongFieldDynamics = "ccdc07ee-8812-480c-8350-26ebb731057a"
+DocumenterVitepress = "4710194d-e776-4893-9690-8d956a29c365"
 
-[sources]
-StrongFieldDynamics = { path = ".." }
+[sources.StrongFieldDynamics]
+path = ".."

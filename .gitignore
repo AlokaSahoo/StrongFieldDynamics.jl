@@ -4,6 +4,7 @@
 /Manifest*.toml
 /docs/Manifest*.toml
 /docs/build/
+/docs/node_modules
 
 /deps/
 
