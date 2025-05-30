@@ -9,7 +9,9 @@ makedocs(;
     authors="Aloka Kumar Sahoo <aloka_s@ph.iitr.ac.in>",
     sitename="StrongFieldDynamics.jl",
     format = DocumenterVitepress.MarkdownVitepress(
-        repo="https://AlokaSahoo.github.io/StrongFieldDynamics.jl",
+        repo="github.com/AlokaSahoo/StrongFieldDynamics.jl",
+        devbranch = "main",
+        devurl = "dev",
     ),
     pages=[
         "Home" => "index.md",
