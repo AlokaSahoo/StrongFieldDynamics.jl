@@ -10,6 +10,8 @@ A Julia package for studying intense laser-atom interactions under strong field 
 
 The package provides several approaches to consider the influence of atomic potential to the ionized electron.
 
+With the future scope to include HHG and other processes into account.
+
 ```@index
 ```
 
