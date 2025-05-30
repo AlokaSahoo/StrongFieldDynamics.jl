@@ -18,7 +18,7 @@ makedocs(;
 
 DocumenterVitepress.deploydocs(;
     repo = "github.com/AlokaSahoo/StrongFieldDynamics.jl",
-    target = "build",
+    target = joinpath(@__DIR__, "build"),
     devbranch = "main",
     branch = "gh-pages",
     push_preview = true,
