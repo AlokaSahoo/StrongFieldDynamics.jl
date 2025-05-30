@@ -5,4 +5,4 @@
 [![Build Status](https://github.com/AlokaSahoo/StrongFieldDynamics.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/AlokaSahoo/StrongFieldDynamics.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/AlokaSahoo/StrongFieldDynamics.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/AlokaSahoo/StrongFieldDynamics.jl)
 
-A Julia package to study the ionizations of Atoms under high-intensity lasers.
+A Julia package for studying laser-atom interactions under strong field approximations using the partial wave expasion approach. 
