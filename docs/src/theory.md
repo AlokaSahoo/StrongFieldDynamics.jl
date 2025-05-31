@@ -13,9 +13,7 @@ The SFA is a widely used approach for modeling ionization of atoms in intense la
 
 The electron wavefunction is expanded in terms of spherical harmonics, allowing for the analysis of angular momentum components and angular distributions of photoelectrons.
 
-\[
-\Psi(\mathbf{r}, t) = \sum_{l,m} R_{l}(r, t) Y_{l}^{m}(\theta, \phi)
-\]
+$$ \Psi(\mathbf{r}, t) = \sum_{l,m} R_{l}(r, t) Y_{l}^{m}(\theta, \phi) $$
 
 This expansion is crucial for capturing the angular structure of the ionization process.
 

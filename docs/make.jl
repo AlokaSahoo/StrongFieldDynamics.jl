@@ -2,7 +2,7 @@ using StrongFieldDynamics
 using Documenter
 using DocumenterVitepress
 
-DocMeta.setdocmeta!(StrongFieldDynamics, :DocTestSetup, :(using StrongFieldDynamics); recursive=true)
+# DocMeta.setdocmeta!(StrongFieldDynamics, :DocTestSetup, :(using StrongFieldDynamics); recursive=true)
 
 makedocs(;
     modules=[StrongFieldDynamics],
@@ -10,11 +10,11 @@ makedocs(;
     sitename="StrongFieldDynamics.jl",
     format = DocumenterVitepress.MarkdownVitepress(
         repo="github.com/AlokaSahoo/StrongFieldDynamics.jl",
-        devbranch = "main",
-        devurl = "dev",
     ),
     pages=[
         "Home" => "index.md",
+        "Theory" => "theory.md",
+        "API" => "api.md",
     ],
 )
 

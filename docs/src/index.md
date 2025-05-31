@@ -42,10 +42,3 @@ Planned extensions include:
 ## Getting Started
 
 To get started, see the [installation instructions](https://github.com/AlokaSahoo/StrongFieldDynamics.jl#installation) and the usage examples in the documentation.
-
-```@index
-```
-
-```@autodocs
-Modules = [StrongFieldDynamics]
-```
