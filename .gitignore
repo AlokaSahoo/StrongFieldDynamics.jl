@@ -4,6 +4,9 @@
 /Manifest*.toml
 /docs/Manifest*.toml
 /docs/build/
+/docs/node_modules/
+/docs/package-lock.json
+/docs/Manifest.toml
 
 /deps/
 

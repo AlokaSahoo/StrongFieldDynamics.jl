@@ -60,6 +60,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                             ClebschGordan(lp, (mj - msp + q), 1//2, msp, jp, (mj + q)) * 
                             ClebschGordan(j, mj, 1, q, jp, mj + q)
                 term2 += factor2 * matrix_elem12
+                println("factor1 $factor1, factor2 $factor2")
             end
 
             # Only compute term3 if lp == l
@@ -71,10 +72,10 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
             end
         end
     end
-    term1 = term1 * (-im / sqrt(2 * pi) ) * F1_integral(pulse, a_electron, p_electron, θ ; sign=1)
-    term2 = term2 * (-im / sqrt(2 * pi) ) * F1_integral(pulse, a_electron, p_electron, θ ; sign=-1)
+    term1 = term1 * (-im * sqrt(2 / pi) ) * F1_integral(pulse, a_electron, p_electron, θ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 / pi) ) * F1_integral(pulse, a_electron, p_electron, θ ; sign=-1)
 
-    # println("Term 1 $term1, Term 2 $term2 and Term3 $term3")
+    println("Term 1 $term1, Term 2 $term2 and Term3 $term3")
 
     # Total result
     return term1 + term2 + term3
