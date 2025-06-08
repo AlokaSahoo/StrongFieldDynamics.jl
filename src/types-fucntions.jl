@@ -84,7 +84,7 @@ Computes the Spherical hamonics using the Associated Legender Polynomials as
 """
 function Ylm(l, m, θ, ϕ)
     m = convert(Int64, m)
-    if m < 0 || m > l return zero(ComplexF64) end
+    if abs(m) > l return zero(ComplexF64) end
     if m ≥ 0
         P = AssociatedLegendrePolynomials.legendre(LegendreSphereNorm(), l, m, cos(θ))
         return P * exp(im * m * ϕ)
