@@ -3,110 +3,16 @@ using QuadGK
 export sin2Sv
 
 
-@doc raw"""
-The pulse shape integral
-"""
-function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
-
-    integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*pulse.Sv(t, θ, pulse, a_electron, p_electron))
-    return pulse.A₀ * exp(-im * sign * pulse.ϕ) * quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
-end
-
-
-@doc raw"""
-The pulse shape integral
-"""
-function F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64)
-
-    function A2(t::Float64)
-        a = ( pulse.A₀ * pulse.f(t) * exp(-im * (pulse.ω * t + pulse.ϕ)) ) .* pulse.pol
-        return (a' * a)
-    end
-
-    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * pulse.Sv(t, θ, pulse, a_electron, p_electron) ) 
-
-    return quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
-end
-
-
-"""
-    sin2Sv(t::Float64, θ::Float64, pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
-
-Defines a sin² envelope.
-"""
-function sin2Sv(t::Float64, θ::Float64, pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
-
-    # Inonization potential
-    εp = a_electron.ε
-    # Laser pulse 
-    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.ϕ - pulse.pol * θ
-    a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
-
-    ck = [-1/4, 1/2, -1/4]
-
-    if t < 0 
-        return εp * t
-    elseif t ≤ pulse.Tp
-        tau = t
-    else
-        tau = pulse.Tp
-    end
-
-    # Compute the additional terms evaluated at tau
-    term1 = (3/8) * Up * tau
-    term2 = - (Up * np) / (2 * ω) * sin((ω * tau) / np)
-    term3 = (Up * np) / (16 * ω) * sin(2 * (ω * tau) / np)
-    sum_term = sum((ck[k+2] / (1 + k/np)) * (sin(ω * (1 + k/np) * tau + ξ) - sin(ξ)) for k in -1:1)
-    f_tau = term1 + term2 + term3 + a * sum_term
-
-    return εp * t + f_tau
-end
-
-
-# function sin2Sv(t::Float64, θ::Float64, pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
-
-#     # Inonization potential
-#     εp = a_electron.ε
-
-#     ω  = pulse.ω
-#     Up = pulse.Up
-#     np = pulse.np
-#     ξ  = pulse.ϕ - θ
-
-#     a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
-
-#     ck = [-1/4, 1/2, -1/4]
-
-#     if t < 0 
-#         return εp * t
-
-#     elseif t ≤ pulse.Tp
-#         sum_term = 0.0
-#         for k in -1:1
-#             coeff = ck[k + 2] / (1 + k / np)  # Adjust index: k=-1 -> 1, k=0 -> 2, k=1 -> 3
-#             sum_term += coeff * (sin(ω * (1 + k / np) * t + ξ) - sin(ξ))
-#         end
-#         return εp * t + (3/8) * Up * t -
-#                (Up * np / (2 * ω)) * sin(ω * t / np) +
-#                (Up * np / (16 * ω)) * sin(2 * ω * t / np) +
-#                a * sum_term
-
-#     elseif t ≥ pulse.Tp
-#         sum_term = 0.0
-#         for k in -1:1
-#             coeff = ck[k + 2] / (1 + k / np)  # Adjust index as before
-#             sum_term += coeff * (sin(ω * (1 + k / np) * Tp + ξ) - sin(ξ))
-#         end
-#         return εp * t + (3/8) * Up * Tp -
-#                (Up * np / (2 * ω)) * sin(ω * Tp / np) +
-#                (Up * np / (16 * ω)) * sin(2 * ω * Tp / np) +
-#                a * sum_term
-#     end
-# end
-
-
 #=============================================== From JAC ==========================================================#
-function computePulseShapeIntegrals(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; sign=1, phip=0.0)
+@doc raw"""
+
+    F1_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; sign=1, phip=0.0)
+    
+Computes the pulse shape integral of the form:
+\mathcal{F}_1\left[\pm \omega ; f ; \mathbf{p}\right] = A_0 e^{\mp i \phi_{\text{CEP}}} \int_{-\infty}^{\infty} d\tau f(\tau) e^{-i(\varepsilon_i \pm \omega)\tau + i S_p(\tau)}, \\
+Returns the integration result of type `ComplexF64`.
+"""
+function F1_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; sign=1, phip=0.0)
     wa = zero(ComplexF64)   
     np = pulse.np;   Tp = 2pi * np / pulse.ω
     omega = pulse.ω
@@ -124,7 +30,7 @@ function computePulseShapeIntegrals(pulse::Pulse, a_electron::AtomicElectron, p_
     
     #Define Gauss-Legendre grid, convergence is typically good for orderGL = 100 * np (time consuming for np > 10); tested up to np = 20
     if  np <= 10     orderGL = 200*np
-    else             orderGL = 1000
+    else             orderGL = 2000
     end
     tgrid, weights = QuadGK.gauss(orderGL,0.0,Tp)
     
@@ -171,8 +77,15 @@ function computePulseShapeIntegrals(pulse::Pulse, a_electron::AtomicElectron, p_
     return wa
 end
 
+@doc raw"""
 
-function pulseShapeQuadIntegral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; phip=0.0)
+    F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; phip=0.0)
+
+Computes the pulse shape integral of the form:
+\mathcal{F}_2\left[f ; \mathbf{p}\right] &= \int_{-\infty}^{\infty} d\tau A^2(\tau) e^{-i \varepsilon_p \tau + i S_p(\tau)}
+Returns the integration result of type ComplexF64.
+"""
+function F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; phip=0.0)
 
     wa = zero(ComplexF64)   
     np = pulse.np;   Tp = 2pi * np / pulse.ω
@@ -232,6 +145,76 @@ function pulseShapeQuadIntegral(pulse::Pulse, a_electron::AtomicElectron, p_elec
 end
 
 
+@doc raw"""
+
+    F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
+
+Computes the pulse shape integral of the form:
+\mathcal{F}_1\left[\pm \omega ; f ; \mathbf{p}\right] = A_0 e^{\mp i \phi_{\text{CEP}}} \int_{-\infty}^{\infty} d\tau f(\tau) e^{-i(\varepsilon_i \pm \omega)\tau + i S_p(\tau)}, \\
+Returns the integration result of type ComplexF64.
+"""
+function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
+
+    integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*pulse.Sv(t, θ, pulse, a_electron, p_electron))
+    return pulse.A₀ * exp(-im * sign * pulse.ϕ) * quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
+end
+
+
+@doc raw"""
+
+    F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64)
+
+Computes the pulse shape integral of the form:
+\mathcal{F}_2\left[f ; \mathbf{p}\right] &= \int_{-\infty}^{\infty} d\tau A^2(\tau) e^{-i \varepsilon_p \tau + i S_p(\tau)}
+Returns the integration result of type ComplexF64.
+"""
+function F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64)
+
+    function A2(t::Float64)
+        a = ( pulse.A₀ * pulse.f(t) * exp(-im * (pulse.ω * t + pulse.ϕ)) ) .* pulse.pol
+        return (a' * a)
+    end
+
+    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * pulse.Sv(t, θ, pulse, a_electron, p_electron) ) 
+
+    return quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
+end
+
+
+"""
+    sin2Sv(t::Float64, θ::Float64, pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
+
+Defines the Volkov phase integral over time for a sin² envelope.
+"""
+function sin2Sv(t::Float64, θ::Float64, pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
+
+    # Inonization potential
+    εp = a_electron.ε
+    # Laser pulse 
+    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.ϕ - pulse.pol * θ
+    a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
+
+    ck = [-1/4, 1/2, -1/4]
+
+    if t < 0 
+        return εp * t
+    elseif t ≤ pulse.Tp
+        tau = t
+    else
+        tau = pulse.Tp
+    end
+
+    # Compute the additional terms evaluated at tau
+    term1 = (3/8) * Up * tau
+    term2 = - (Up * np) / (2 * ω) * sin((ω * tau) / np)
+    term3 = (Up * np) / (16 * ω) * sin(2 * (ω * tau) / np)
+    sum_term = sum((ck[k+2] / (1 + k/np)) * (sin(ω * (1 + k/np) * tau + ξ) - sin(ξ)) for k in -1:1)
+    f_tau = term1 + term2 + term3 + a * sum_term
+
+    return εp * t + f_tau
+end
+
+
 ################################################################## Danish's Part #################################################################
 
 # abstract type Sign end
@@ -247,38 +230,52 @@ end
 # struct Type1 <: SaddleType end  # For F₁ (with ±ω term)
 # struct Type2 <: SaddleType end  # For F₂ (no ω term)
 
-# # Saddle Point Equation for two pulse shape integrals
-# function saddle_point_eq(t, pulse::Pulse, momentum::Abstractmomentum, ionization_potential::AbstractIonizationPotential, s::Sign, ::Type1)
-#     A = vector_potential(t, pulse)
-#     E = 0.5 * ((momentum.x + A.x)^2 + (momentum.y + A.y)^2 + (momentum.z + A.z)^2)
-#     return E - (ionization_potential.value + signval(s) * pulse.omega)
+# abstract type AbstractCoordinate end
+
+# struct Cartesian <: AbstractCoordinate
+#     x::Float64
+#     y::Float64
+#     z::Float64
 # end
 
-# function saddle_point_eq(t, pulse::Pulse, momentum::Abstractmomentum, ionization_potential::AbstractIonizationPotential, s::Sign, ::Type2)
+# struct Spherical <: AbstractCoordinate
+#     r::Float64
+#     θ::Float64
+#     ϕ::Float64
+# end
+
+# # Saddle Point Equation for two pulse shape integrals
+# function saddle_point_eq(t, pulse::Pulse, momentum::Cartesian, ionization_potential::Float64, s::Sign, ::Type1)
 #     A = vector_potential(t, pulse)
 #     E = 0.5 * ((momentum.x + A.x)^2 + (momentum.y + A.y)^2 + (momentum.z + A.z)^2)
-#     return E - ionization_potential.value
+#     return E - (ionization_potential + signval(s) * pulse.omega)
+# end
+
+# function saddle_point_eq(t, pulse::Pulse, momentum::Cartesian, ionization_potential::Float64, s::Sign, ::Type2)
+#     A = vector_potential(t, pulse)
+#     E = 0.5 * ((momentum.x + A.x)^2 + (momentum.y + A.y)^2 + (momentum.z + A.z)^2)
+#     return E - ionization_potential
 # end
 
 # # Corresponding phase for the pulse shape integrals
-# function phase(momentum::Abstractmomentum, t, s::Sign, pulse::Pulse, ionization_potential::AbstractIonizationPotential, ::Type1)
+# function phase(momentum::Cartesian, t, s::Sign, pulse::Pulse, ionization_potential::Float64, ::Type1)
 #     S_V = volkov_phase(momentum, t, pulse, ionization_potential)
-#     return -1im * (ionization_potential.value + signval(s) * pulse.omega) * t + 1im * S_V
+#     return -1im * (ionization_potential + signval(s) * pulse.omega) * t + 1im * S_V
 # end
 
-# function phase(momentum::Abstractmomentum, t, s::Sign, pulse::Pulse, ionization_potential::AbstractIonizationPotential, ::Type2)
+# function phase(momentum::Cartesian, t, s::Sign, pulse::Pulse, ionization_potential::Float64, ::Type2)
 #     S_V = volkov_phase(momentum, t, pulse, ionization_potential)
-#     return -1im * ionization_potential.value * t + 1im * S_V
+#     return -1im * ionization_potential * t + 1im * S_V
 # end
 
 # # Double Derivative of Volkov Phase
-# function S_double_prime(E::ElectricField, momentum::Abstractmomentum, A::VectorPotential)
+# function S_double_prime(E::ElectricField, momentum::Cartesian, A::VectorPotential)
 #     result = -(E.x * (tilde.x + A.x) + E.y * (tilde.y + A.y) + E.z * (tilde.z + A.z))
 #     return result
 # end
 
 # # Calculation for saddle point solutions
-# function find_saddle_points(pulse::Pulse, momentum::Abstractmomentum, ionization_potential::AbstractIonizationPotential, sign::Sign, type::SaddleType)
+# function find_saddle_points(pulse::Pulse, momentum::Cartesian, ionization_potential::Float64, sign::Sign, type::SaddleType)
 #     len = pulse.num_cycles > 4.0 ? pulse.num_cycles * 10 : 20
 #     real_grid = range(0, pulse.T_p, length=len)
 #     imag_grid = range(0, pulse.T, length=len)
@@ -302,7 +299,7 @@ end
 # end
 
 # # Total contributions from the Pulse Shape Integrals
-# function Integrals(pulse::Pulse, momentum::Abstractmomentum, ionization_potential::AbstractIonizationPotential, sign::Sign, envelope, type::SaddleType)
+# function Integrals(pulse::Pulse, momentum::Cartesian, ionization_potential::Float64, sign::Sign, envelope, type::SaddleType)
 #     saddles = find_saddle_points(pulse, momentum, ionization_potential, sign, type)
 #     total = 0.0 + 0.0im
 #     for ts in saddles

@@ -17,6 +17,20 @@ The electron continuum in the laser field is given by Volkov-type states which, 
 \left| \chi_{\mathbf{p}}(t) \right\rangle = \sqrt{\frac{2}{\pi}} e^{-i S_V(t)} \sum_{\ell_p=0}^{\infty} \sum_{m_p=-\ell_p}^{\ell_p} Y_{\ell_p m_p}^*\left(\vartheta_p, \varphi_p\right) \left| \varepsilon_p \ell_p m_p \right\rangle \otimes \left| \chi_{f, m_s^{\prime}} \right\rangle,
 ```
 
+The plane wave expassion of the continuum electron state is given by
+
+```math
+4\pi \sum_{l_p=0}^{\infty} \sum_{m_p=-l_p}^{l_p} i^{l_p} j_{l_p}(pr) Y_{l_p m_p}^* (\theta_p, \phi_p) Y_{l_p m_p} (\theta, \phi)
+```
+
+For the case of distorted waves, the effect of the Atomic potential is considered hence the distortion of continuum electron. The distorted wave expansion is given by
+
+```math
+\frac{4\pi}{r} \sum_{\ell_p=0}^{\infty} \sum_{m_p=-\ell_p}^{\ell_p} i^{\ell_p} e^{\pm i \Delta_{\ell_p}} P_{\varepsilon_p \ell_p}(r) Y_{\ell_p m_p}^* (\vartheta_p, \varphi_p) Y_{\ell_p m_p} (\vartheta_p, \varphi_p)
+```
+
+where ``\Delta_{\ell_p}`` is the Coulomb phase shift, which accounts for the influence of the atomic potential on the ionized electron and ``P_{\varepsilon_p l_p}(r)`` is the radial wave function of the distorted wave.
+
 In the velocity gauge, the interaction between the continuum electron and laser ﬁeld is thereby accounted for by the so-called Volkov phase
 
 ```math

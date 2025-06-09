@@ -46,11 +46,11 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
             p_partialwave = StrongFieldDynamics.PartialWave(p_electron.ε, lp, jp, P, δ)
             matrix_elem12 = reduced_matrix_element(p_partialwave, a_electron, r)
 
-            println("Reduced ME $matrix_elem12")
+            # println("Reduced ME $matrix_elem12")
                 
             for q in -1:1
-                println("uq $(u[q])")
-                println("lp $lp, msp $msp, jp $jp, j $j, mj $mj, $(mj - msp - q), $θ, $ϕ")
+                # println("uq $(u[q])")
+                # println("lp $lp, msp $msp, jp $jp, j $j, mj $mj, $(mj - msp - q), $θ, $ϕ")
 
                 if matrix_elem12 == 0.0 continue end
 
@@ -65,10 +65,10 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                             ClebschGordan(lp, (mj - msp + q), 1//2, msp, jp, (mj + q)) * 
                             ClebschGordan(j, mj, 1, q, jp, mj + q)
                 term2 += factor2 * matrix_elem12
-                println("Ylm(lp, (mj - msp - q), θ, ϕ) $(Ylm(lp, (mj - msp - q), θ, ϕ))")
-                println("ClebschGordan(lp, (mj - msp - q), 1//2, msp, jp, (mj - q) ) $( ClebschGordan(lp, (mj - msp - q), 1//2, msp, jp, (mj - q) ))")
-                println("ClebschGordan(j, mj, 1, -q, jp, (mj - q) ) $(ClebschGordan(j, mj, 1, -q, jp, (mj - q) ))")
-                println("factor1 $factor1, factor2 $factor2")
+                # println("Ylm(lp, (mj - msp - q), θ, ϕ) $(Ylm(lp, (mj - msp - q), θ, ϕ))")
+                # println("ClebschGordan(lp, (mj - msp - q), 1//2, msp, jp, (mj - q) ) $( ClebschGordan(lp, (mj - msp - q), 1//2, msp, jp, (mj - q) ))")
+                # println("ClebschGordan(j, mj, 1, -q, jp, (mj - q) ) $(ClebschGordan(j, mj, 1, -q, jp, (mj - q) ))")
+                # println("factor1 $factor1, factor2 $factor2")
             end
 
             # Only compute term3 if lp == l
@@ -76,18 +76,18 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                 factor3 = Ylm(l, mj - msp, θ, ϕ) *
                         ClebschGordan(l, mj - msp, 1//2, msp, j, mj) *
                         inner_product(p_partialwave, a_electron, r)
-                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.pulseShapeQuadIntegral(pulse, a_electron, p_electron, θ)
-            println("factor3 $factor3")
-            println("F2_integral $(StrongFieldDynamics.pulseShapeQuadIntegral(pulse, a_electron, p_electron, θ))")
+                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ)
+            # println("factor3 $factor3")
+            # println("F2_integral $(StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ))")
             end
         end
     end
-    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.computePulseShapeIntegrals(pulse, a_electron, p_electron, θ ; sign=1)
-    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.computePulseShapeIntegrals(pulse, a_electron, p_electron, θ ; sign=-1)
+    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=-1)
 
-    println("F1_integral 1 ", StrongFieldDynamics.computePulseShapeIntegrals(pulse, a_electron, p_electron, θ ; sign=1))
-    println("F1_integral -1", StrongFieldDynamics.computePulseShapeIntegrals(pulse, a_electron, p_electron, θ ; sign=-1))
-    println("Term 1 $term1, Term 2 $term2 and Term3 $term3 \n")
+    # println("F1_integral 1 ", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=1))
+    # println("F1_integral -1", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=-1))
+    # println("Term 1 $term1, Term 2 $term2 and Term3 $term3 \n")
 
     # Total result
     return term1 + term2 + term3
