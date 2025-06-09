@@ -9,6 +9,7 @@
 /docs/Manifest.toml
 
 /deps/
+/examples
 
 /.vscode/
 /.JuliaFormatter.toml

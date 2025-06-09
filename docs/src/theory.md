@@ -34,11 +34,13 @@ The package provides several methods to include the influence of the atomic pote
 The direct ionization amplitude is computed using the partial wave expansion of the Volkov states. The amplitude for direct ionization can be expressed as:
 
 ```math
-T_0\left(\mathbf{p}, m_j, m_s^{\prime}\right) =  -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_1[\omega ; f ; \mathbf{p}] \left( \sum_{\ell_p=0}^{\infty} \sum_{j_p \geq 1/2} \sum_{q=0, \pm 1} (-1)^q u_q Y_{\ell_p, m_j - m_s^{\prime} - q}\left(\vartheta_p, \varphi_p\right) \right. \\
- \quad \left. \times \left\langle \ell_p \left(m_j - m_s^{\prime} - q\right), \frac{1}{2} m_s^{\prime} \middle| j_p \left(m_j - q\right) \right\rangle \left\langle j m_j, 1 (-q) \middle| j_p \left(m_j - q\right) \right\rangle \left\langle \varepsilon_p \ell_p j_p \middle\| \mathbf{p} \middle\| n \ell j \right\rangle \right) \\
- -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_1[-\omega ; f ; \mathbf{p}] \left( \sum_{\ell_p=0}^{\infty} \sum_{j_p \geq 1/2} \sum_{q=0, \pm 1} u_q^* Y_{\ell_p, m_j - m_s^{\prime} + q}\left(\vartheta_p, \varphi_p\right) \right. \\
- \quad \left. \times \left\langle \ell_p \left(m_j - m_s^{\prime} + q\right), \frac{1}{2} m_s^{\prime} \middle| j_p \left(m_j + q\right) \right\rangle \left\langle j m_j, 1 q \middle| j_p \left(m_j + q\right) \right\rangle \left\langle \varepsilon_p \ell_p j_p \middle\| \mathbf{p} \middle\| n \ell j \right\rangle \right) \\
- -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_2[f ; \mathbf{p}] Y_{\ell, m_j - m_s^{\prime}}\left(\vartheta_p, \varphi_p\right) \left\langle \ell \left(m_j - m_s^{\prime}\right), \frac{1}{2} m_s^{\prime} \middle| j m_j \right\rangle \left\langle \varepsilon_p \ell j m_j \middle| n \ell j m_j \right\rangle,
+\begin{aligned}
+T_0\left(\mathbf{p}, m_j, m_s^{\prime}\right) = & -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_1[\omega ; f ; \mathbf{p}] \left( \sum_{\ell_p=0}^{\infty} \sum_{j_p \geq 1/2} \sum_{q=0, \pm 1} (-1)^q u_q Y_{\ell_p, m_j - m_s^{\prime} - q}\left(\vartheta_p, \varphi_p\right) \right. \\
+& \quad \left. \times \left\langle \ell_p \left(m_j - m_s^{\prime} - q\right), \frac{1}{2} m_s^{\prime} \middle| j_p \left(m_j - q\right) \right\rangle \left\langle j m_j, 1 (-q) \middle| j_p \left(m_j - q\right) \right\rangle \left\langle \varepsilon_p \ell_p j_p \middle\| \mathbf{p} \middle\| n \ell j \right\rangle \right) \\
+& -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_1[-\omega ; f ; \mathbf{p}] \left( \sum_{\ell_p=0}^{\infty} \sum_{j_p \geq 1/2} \sum_{q=0, \pm 1} u_q^* Y_{\ell_p, m_j - m_s^{\prime} + q}\left(\vartheta_p, \varphi_p\right) \right. \\
+& \quad \left. \times \left\langle \ell_p \left(m_j - m_s^{\prime} + q\right), \frac{1}{2} m_s^{\prime} \middle| j_p \left(m_j + q\right) \right\rangle \left\langle j m_j, 1 q \middle| j_p \left(m_j + q\right) \right\rangle \left\langle \varepsilon_p \ell_p j_p \middle\| \mathbf{p} \middle\| n \ell j \right\rangle \right) \\
+& -\frac{i}{\sqrt{2 \pi}} \mathcal{F}_2[f ; \mathbf{p}] Y_{\ell, m_j - m_s^{\prime}}\left(\vartheta_p, \varphi_p\right) \left\langle \ell \left(m_j - m_s^{\prime}\right), \frac{1}{2} m_s^{\prime} \middle| j m_j \right\rangle \left\langle \varepsilon_p \ell j m_j \middle| n \ell j m_j \right\rangle,
+\end{aligned}
 ```
 
 And the Ionization Probability is given by

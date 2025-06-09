@@ -105,7 +105,131 @@ end
 # end
 
 
+#=============================================== From JAC ==========================================================#
+function computePulseShapeIntegrals(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; sign=1, phip=0.0)
+    wa = zero(ComplexF64)   
+    np = pulse.np;   Tp = 2pi * np / pulse.ω
+    omega = pulse.ω
+    phiCep = pulse.ϕ;
+    sinSqrArg = 0.5 * omega / np;
+    lambda = pulse.pol
+    
+    p = sqrt(2.0*p_electron.ε)
+    px = p*sin(thetap)*cos(phip)
+    py = p*sin(thetap)*sin(phip)
+    
+    epsilon = pulse.ϵ
+    
+    A0eps = pulse.A₀/sqrt(1.0 + epsilon^2)
+    
+    #Define Gauss-Legendre grid, convergence is typically good for orderGL = 100 * np (time consuming for np > 10); tested up to np = 20
+    if  np <= 10     orderGL = 200*np
+    else             orderGL = 1000
+    end
+    tgrid, weights = QuadGK.gauss(orderGL,0.0,Tp)
+    
+    #Sum over grid and compute Gauss-Legendre sum
+    for    j = 1:orderGL
+        t = tgrid[j]
+        
+        #Compute Volkov phase at gridpoint t
+        cosIntegral = 0.25 / (omega * (np^2-1)) * (  2*sin(phiCep) + 2 * (np^2-1) * sin(phiCep + omega*t) - np * ( (1+np)*sin( phiCep + (np-1)/np * omega*t ) + (np-1) * sin( phiCep + (np+1)/np * omega*t )  ) )
+        
+        sinIntegral = 0.25 / (omega * (np^2-1)) * ( -2*cos(phiCep) - 2 * (np^2-1) * cos(phiCep + omega*t) + np * ( (1+np)*cos( phiCep + (np-1)/np * omega*t ) + (np-1) * cos( phiCep + (np+1)/np * omega*t )  ) )
+        
+        cos2Integral = sin(2*phiCep)/omega * ( -6 - np/(np-1) - np/(np+1) + 8*np/(2*np-1) + 8*np/(2*np+1) )
+                        + 12*t + 6/omega * cos(2*omega*t) * sin(2*phiCep) + 6/omega * cos(2*phiCep) * sin(2*omega*t) - 16/omega*np*sin(omega*t/np) + 2/omega*np*sin(2*omega*t/np)
+                        - 8*np/(omega*(1+2*np)) * sin(2*phiCep + (2+1/np)*omega*t) + np/(omega*(np-1)) * sin(2*(phiCep + (np-1)/np *omega*t))
+                        + np/(omega*(1+np)) * sin(2*(phiCep + (np+1)/np * omega*t)) - 8*np/(omega*(2*np-1))*sin(2*phiCep + (2*np-1)/np * omega*t )
+        cos2Integral = cos2Integral / 64
+        
+        sin2Integral = 12*t + 6/omega * sin(2*phiCep) * ( 1/(1-5*np^2+4*np^4) - cos(2*omega*t) ) - 6/omega * cos(2*phiCep)*sin(2*omega*t)
+                        - 16/omega * np * sin(omega*t/np) + 2/omega * np * sin(2*omega*t/np) + 8*np/(omega*(1+2*np)) * sin(2*phiCep + (2+1/np)*omega*t)
+                        - np/(omega*(np-1)) * sin(2*(phiCep + (np-1)/np *omega*t )) - np/(omega*(1+np)) * sin(2*(phiCep + (np+1)/np*omega*t)) + 8/omega * np/(2*np-1) * sin(2*phiCep + (2*np-1)/np*omega*t)
+        sin2Integral = sin2Integral / 64
+        
+        SVolkov = p_electron.ε*t + A0eps*px*cosIntegral + A0eps*lambda*epsilon*py*sinIntegral + 0.5 * A0eps^2 * ( cos2Integral + epsilon^2 * sin2Integral )
+        
+        #Compute integrand at gridpoint t
+        # if  plus    integrand = sin( sinSqrArg * t )^2 * exp( -im * ( ( a_electron.ε + beam.omega ) * t - SVolkov ) )
+        # else        integrand = sin( sinSqrArg * t )^2 * exp( -im * ( ( a_electron.ε - beam.omega ) * t - SVolkov ) )
+        # end
 
+        integrand = sin( sinSqrArg * t )^2 * exp( -im * ( ( a_electron.ε + sign * omega ) * t - SVolkov ) )
+        
+        #Gauss-Legendre sum
+        wa = wa + weights[j] * integrand
+    end
+    
+    #Multiply with global factor
+    # if  plus    wa = beam.A0 * exp(-im * phiCep) * wa
+    # else        wa = beam.A0 * exp(im * phiCep) * wa
+    # end
+
+    wa = pulse.A₀ * exp(-sign * im * phiCep) * wa
+
+    return wa
+end
+
+
+function pulseShapeQuadIntegral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64 ; phip=0.0)
+
+    wa = zero(ComplexF64)   
+    np = pulse.np;   Tp = 2pi * np / pulse.ω
+    omega = pulse.ω
+    phiCep = pulse.ϕ;
+    sinSqrArg = 0.5 * omega / np;
+    lambda = pulse.pol
+    
+    p  = sqrt(2.0*p_electron.ε)
+    px = p*sin(thetap)*cos(phip)
+    py = p*sin(thetap)*sin(phip)
+    
+    epsilon = pulse.ϵ
+    
+    A0eps = pulse.A₀/sqrt(1.0 + epsilon^2)
+    
+    #Define Gauss-Legendre grid, convergence is typically good for orderGL = 100 * np (time consuming for np > 10); tested up to np = 20
+    if  np <= 10     orderGL = 200*np
+    else             orderGL = 1000
+    end
+    tgrid, weights = QuadGK.gauss(orderGL,0.0,Tp)
+    
+    
+    #Sum over grid and compute Gauss-Legendre sum
+    for    j = 1:orderGL
+        t = tgrid[j]
+        
+        #Compute Volkov phase at gridpoint t
+        cosIntegral = 0.25 / (omega * (np^2-1)) * (  2*sin(phiCep) + 2 * (np^2-1) * sin(phiCep + omega*t) - np * ( (1+np)*sin( phiCep + (np-1)/np * omega*t ) + (np-1) * sin( phiCep + (np+1)/np * omega*t )  ) )
+        
+        sinIntegral = 0.25 / (omega * (np^2-1)) * ( -2*cos(phiCep) - 2 * (np^2-1) * cos(phiCep + omega*t) + np * ( (1+np)*cos( phiCep + (np-1)/np * omega*t ) + (np-1) * cos( phiCep + (np+1)/np * omega*t )  ) )
+        
+        cos2Integral = sin(2*phiCep)/omega * ( -6 - np/(np-1) - np/(np+1) + 8*np/(2*np-1) + 8*np/(2*np+1) )
+                        + 12*t + 6/omega * cos(2*omega*t) * sin(2*phiCep) + 6/omega * cos(2*phiCep) * sin(2*omega*t) - 16/omega*np*sin(omega*t/np) + 2/omega*np*sin(2*omega*t/np)
+                        - 8*np/(omega*(1+2*np)) * sin(2*phiCep + (2+1/np)*omega*t) + np/(omega*(np-1)) * sin(2*(phiCep + (np-1)/np *omega*t))
+                        + np/(omega*(1+np)) * sin(2*(phiCep + (np+1)/np * omega*t)) - 8*np/(omega*(2*np-1))*sin(2*phiCep + (2*np-1)/np * omega*t )
+        cos2Integral = cos2Integral / 64
+        
+        sin2Integral = 12*t + 6/omega * sin(2*phiCep) * ( 1/(1-5*np^2+4*np^4) - cos(2*omega*t) ) - 6/omega * cos(2*phiCep)*sin(2*omega*t)
+                        - 16/omega * np * sin(omega*t/np) + 2/omega * np * sin(2*omega*t/np) + 8*np/(omega*(1+2*np)) * sin(2*phiCep + (2+1/np)*omega*t)
+                        - np/(omega*(np-1)) * sin(2*(phiCep + (np-1)/np *omega*t )) - np/(omega*(1+np)) * sin(2*(phiCep + (np+1)/np*omega*t)) + 8/omega * np/(2*np-1) * sin(2*phiCep + (2*np-1)/np*omega*t)
+        sin2Integral = sin2Integral / 64
+        
+        SVolkov = p_electron.ε*t + A0eps*px*cosIntegral + A0eps*lambda*epsilon*py*sinIntegral + 0.5 * A0eps^2 * ( cos2Integral + epsilon^2 * sin2Integral )
+        
+        #Compute integrand at gridpoint t
+        integrand = sin( sinSqrArg * t )^4 * ( cos(omega*t+phiCep)^2 + epsilon^2 * sin(omega*t+phiCep)^2 ) * exp( -im * ( a_electron.ε * t - SVolkov ) )
+        
+        #Gauss-Legendre sum
+        wa = wa + weights[j] * integrand
+    end
+    
+    #Multiply with global factor
+    wa = A0eps^2 * wa
+    
+    return( wa )
+end
 
 
 ################################################################## Danish's Part #################################################################
