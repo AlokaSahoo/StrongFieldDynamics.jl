@@ -20,9 +20,8 @@ WignerSymbols = "9f57e263-0b3d-5e2e-b1be-24f2bb48858b"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-
 AssociatedLegendrePolynomials = "1.0"
-CairoMakie = "0.13"
+CairoMakie = "0.13, 0.14"
 DelimitedFiles = "1.9"
 Dierckx = "0.5"
 Distributed = "1.11, 1.10"
