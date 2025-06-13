@@ -6,13 +6,13 @@ using QuadGK
 
 Calculates the ionization probability
 """
-function probability(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
+function probability(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
 
     prob = zero(Float64)
 
     for mj = -a_electron.j : a_electron.j
         for msp = -1//2:1//2
-            amplitude = StrongFieldDynamics.T0( pulse,a_electron, p_electron, mj, msp, deg2rad(90), 0.0)
+            amplitude = StrongFieldDynamics.T0( pulse, a_electron, p_electron, mj, msp, θ, ϕ)
             prob += abs2(amplitude)
         end
     end
@@ -42,10 +42,8 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     for lp in 0:lp_max
         for jp in abs(lp - 1//2):(lp + 1//2)
             # reduced matrix element
-            r, P, δ = bessel_electron(p_electron.ε, lp, r)
-            p_partialwave = StrongFieldDynamics.PartialWave(p_electron.ε, lp, jp, P, δ)
+            p_partialwave = StrongFieldDynamics.compute_partial_wave(lp, jp, p_electron, a_electron)
             matrix_elem12 = reduced_matrix_element(p_partialwave, a_electron, r)
-
             # println("Reduced ME $matrix_elem12")
                 
             for q in -1:1

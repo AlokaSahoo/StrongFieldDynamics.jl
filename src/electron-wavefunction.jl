@@ -9,14 +9,81 @@ freeSchrodinger = dir*"/../deps/mod_sfree.so"
 
 
 """
-    atomic_electron(n::Int64, l::Int64)
+    compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
 
 Computes the atomic electron wavefunction for the corresponding `n` & `l` Principal and Orbital quantum numbers, repectively. 
 """
-function atomic_electron(n::Int64, l::Int64)
-    if (n == 3 && l == 0)
+function compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
+    if     (Z == 3 && n == 2 && l == 0)         # 2s ionization
+        j = 1//2    ;  
+        if ip == 0.0  ip = 5.3917/27.21138 end
+
+        data = readdlm(dir * "/../deps/Li-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,4]
+
+    elseif (Z == 3 && n == 1 && l == 0)         # 1s ionization (hydrogenic)
+        j = 1//2    ;  
+        if ip == 0.0  ip = 5.3917/27.21138 end
+
         data = readdlm(dir * "/../deps/Li-III.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,2]
+
+    elseif (Z == 10 && n == 2 && l == 1)        # 2p+ ionization
+        j = 3//2    ;  
+        if ip == 0.0  ip = 21.5645/27.21138 end
+
+        data = readdlm(dir * "/../deps/Ne-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,8]
+
+    elseif (Z == 10 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+        j = 1//2    ;  
+        if ip == 0.0  ip = 21.5645/27.21138 end
+
+        data = readdlm(dir * "/../deps/Ne-X.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,2]
+
+    elseif (Z == 18 && n == 3 && l == 1)        # 3p+ ionization
+        j = 3//2    ;  
+        if ip == 0.0  ip = 15.7596/27.21138 end
+
+        data = readdlm(dir * "/../deps/Ar-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,14]
+
+    elseif (Z == 18 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+        j = 1//2    ;  
+        if ip == 0.0  ip = 15.7596/27.21138 end
+
+        data = readdlm(dir * "/../deps/Ar-XVIII.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,2]
+
+    elseif (Z == 36 && n == 4 && l == 1)        # 4p+ ionization
+        j = 3//2    ;  
+        if ip == 0.0  ip = 13.9996/27.21138 end
+
+        data = readdlm(dir * "/../deps/Kr-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,24]
+
+    elseif (Z == 36 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+        j = 1//2    ;  
+        if ip == 0.0  ip = 13.9996/27.21138 end
+
+        data = readdlm(dir * "/../deps/Kr-XXXVI.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,2]           
+
+    elseif (Z == 54 && n == 5 && l == 1)        # 4p+ ionization
+        j = 3//2    ;  
+        if ip == 0.0  ip = 12.1298/27.21138 end
+
+        data = readdlm(dir * "/../deps/Xe-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,34]
+
+    elseif (Z == 54 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+        j = 1//2    ;  
+        if ip == 0.0  ip = 12.1298/27.21138 end
+
+        data = readdlm(dir * "/../deps/Xe-LIV.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,2]
+
     else
         error("Bound-state electron wavefunction not found.")
     end
@@ -25,7 +92,7 @@ function atomic_electron(n::Int64, l::Int64)
     itp = Dierckx.Spline1D(r_, P_)
     P = itp.(r_)
 
-    return r_, P
+    return AtomicElectron(Z, n, l, j, (-ip), r_, P)
 end
 
 
@@ -77,6 +144,26 @@ function distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vecto
     p = sqrt(2ε)
 
     return r, (P[2:npts+1] ./ p), iPhase.x + cPhase.x
+end
+
+
+"""
+    compute_partial_wave(l::Int64, p_electron::ContinuumElectron, a_electron::AtomicElectron)
+
+Computes the `l`th partial wave for the given photo electron energy and ( if distorted wave) with the given atomic potential.
+Returns an element of type `PartialWave`.
+"""
+function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron)
+    P = zeros(Float64, length(a_electron.r))  ; δ = 0.0
+
+    if p_electron.solution == :Bessel
+        r, P, δ = bessel_electron(p_electron.ε, l, a_electron.r)
+    elseif p_electron.solution == :Distorted
+        r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
+    end
+
+    return PartialWave(p_electron.ε, l, j, P, δ)
+
 end
 
 # """

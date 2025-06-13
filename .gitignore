@@ -11,5 +11,11 @@
 /deps/
 /examples
 
+/src/pulse-shape-integration-bak.jl
+/src/types-functions.jl
+/src/calculation_types.jl
+/src/saddle-point-integration.jl
+/src/example.jl.outdated
+
 /.vscode/
 /.JuliaFormatter.toml
