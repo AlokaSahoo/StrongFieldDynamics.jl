@@ -1,83 +1,135 @@
+"""
+# Electron Wavefunction Module
+
+This module provides functions for computing atomic and continuum electron wavefunctions
+used in strong field dynamics calculations. It supports:
+
+- Atomic bound state wavefunctions for various elements (Li, Ne, Ar, Kr, Xe)
+- Continuum electron wavefunctions (free and distorted waves)
+- Partial wave computations for photoionization processes
+
+The module interfaces with Fortran libraries for distorted wave calculations and uses
+pre-computed atomic data files for accurate bound state representations.
+"""
+
 using Dierckx
 # using OrdinaryDiffEq: ODEProblem, solve, Vern9, Tsit5
 using SpecialFunctions
 using DelimitedFiles
 
-# calling the fortran shared object for distorted patial waves
+# Path to the Fortran shared object library for distorted partial waves
 dir = @__DIR__
 freeSchrodinger = dir*"/../deps/mod_sfree.so"
 
 
 """
-    compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
+    compute_atomic_electron(Z::Int64, n::Int64, l::Int64; ip::Float64=0.0) → AtomicElectron
 
-Computes the atomic electron wavefunction for the corresponding `n` & `l` Principal and Orbital quantum numbers, repectively. 
+Computes the atomic electron wavefunction for specified quantum numbers.
+
+# Arguments
+- `Z::Int64`: Atomic number (nuclear charge)
+- `n::Int64`: Principal quantum number 
+- `l::Int64`: Orbital angular momentum quantum number
+- `ip::Float64=0.0`: Ionization potential in atomic units (Hartree). If 0.0, uses default values.
+
+# Returns
+- `AtomicElectron`: Structure containing the radial wavefunction and quantum numbers
+
+# Supported Atoms and Orbitals
+- **Lithium (Z=3)**: 1s, 2s orbitals
+- **Neon (Z=10)**: 1s, 2p orbitals  
+- **Argon (Z=18)**: 1s, 3p orbitals
+- **Krypton (Z=36)**: 1s, 4p orbitals
+- **Xenon (Z=54)**: 1s, 5p orbitals
+
+# Physics
+The function loads pre-computed Hartree-Fock or Dirac-Fock wavefunctions from data files.
+These represent accurate many-electron atomic wavefunctions that account for electron 
+correlation and relativistic effects where applicable.
+
+# Examples
+```julia
+# Lithium 2s electron
+li_2s = compute_atomic_electron(3, 2, 0)
+
+# Neon 2p electron with custom ionization potential
+ne_2p = compute_atomic_electron(10, 2, 1; ip=0.8)  # 0.8 Hartree
+
+# Argon 3p electron
+ar_3p = compute_atomic_electron(18, 3, 1)
+```
+
+# Notes
+- Ionization potentials are converted from eV to atomic units (÷27.21138)
+- Data files contain radial positions and corresponding wavefunction values
+- Interpolation is performed to ensure smooth wavefunction representation
 """
 function compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
-    if     (Z == 3 && n == 2 && l == 0)         # 2s ionization
+    if     (Z == 3 && n == 2 && l == 0)         # Lithium 2s ionization
         j = 1//2    ;  
-        if ip == 0.0  ip = 5.3917/27.21138 end
+        if ip == 0.0  ip = 5.3917/27.21138 end  # Default IP: 5.3917 eV
 
         data = readdlm(dir * "/../deps/Li-I.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,4]
+        r_, P_ = data[:,1], data[:,4]  # r in bohr, P(r) radial wavefunction
 
-    elseif (Z == 3 && n == 1 && l == 0)         # 1s ionization (hydrogenic)
+    elseif (Z == 3 && n == 1 && l == 0)         # Lithium 1s ionization (hydrogenic-like)
         j = 1//2    ;  
         if ip == 0.0  ip = 5.3917/27.21138 end
 
         data = readdlm(dir * "/../deps/Li-III.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,2]
 
-    elseif (Z == 10 && n == 2 && l == 1)        # 2p+ ionization
+    elseif (Z == 10 && n == 2 && l == 1)        # Neon 2p+ ionization
         j = 3//2    ;  
-        if ip == 0.0  ip = 21.5645/27.21138 end
+        if ip == 0.0  ip = 21.5645/27.21138 end  # Default IP: 21.5645 eV
 
         data = readdlm(dir * "/../deps/Ne-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,8]
 
-    elseif (Z == 10 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+    elseif (Z == 10 && n == 1 && l == 0)        # Neon 1s ionization (hydrogenic-like)
         j = 1//2    ;  
         if ip == 0.0  ip = 21.5645/27.21138 end
 
         data = readdlm(dir * "/../deps/Ne-X.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,2]
 
-    elseif (Z == 18 && n == 3 && l == 1)        # 3p+ ionization
+    elseif (Z == 18 && n == 3 && l == 1)        # Argon 3p+ ionization
         j = 3//2    ;  
-        if ip == 0.0  ip = 15.7596/27.21138 end
+        if ip == 0.0  ip = 15.7596/27.21138 end  # Default IP: 15.7596 eV
 
         data = readdlm(dir * "/../deps/Ar-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,14]
 
-    elseif (Z == 18 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+    elseif (Z == 18 && n == 1 && l == 0)        # Argon 1s ionization (hydrogenic-like)
         j = 1//2    ;  
         if ip == 0.0  ip = 15.7596/27.21138 end
 
         data = readdlm(dir * "/../deps/Ar-XVIII.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,2]
 
-    elseif (Z == 36 && n == 4 && l == 1)        # 4p+ ionization
+    elseif (Z == 36 && n == 4 && l == 1)        # Krypton 4p+ ionization
         j = 3//2    ;  
-        if ip == 0.0  ip = 13.9996/27.21138 end
+        if ip == 0.0  ip = 13.9996/27.21138 end  # Default IP: 13.9996 eV
 
         data = readdlm(dir * "/../deps/Kr-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,24]
 
-    elseif (Z == 36 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+    elseif (Z == 36 && n == 1 && l == 0)        # Krypton 1s ionization (hydrogenic-like)
         j = 1//2    ;  
         if ip == 0.0  ip = 13.9996/27.21138 end
 
         data = readdlm(dir * "/../deps/Kr-XXXVI.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,2]           
 
-    elseif (Z == 54 && n == 5 && l == 1)        # 4p+ ionization
+    elseif (Z == 54 && n == 5 && l == 1)        # Xenon 4p+ ionization
         j = 3//2    ;  
-        if ip == 0.0  ip = 12.1298/27.21138 end
+        if ip == 0.0  ip = 12.1298/27.21138 end  # Default IP: 12.1298 eV
 
         data = readdlm(dir * "/../deps/Xe-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,34]
 
-    elseif (Z == 54 && n == 1 && l == 0)        # 1s ionization (hydrogenic)
+    elseif (Z == 54 && n == 1 && l == 0)        # Xenon 1s ionization (hydrogenic-like)
         j = 1//2    ;  
         if ip == 0.0  ip = 12.1298/27.21138 end
 
@@ -85,10 +137,12 @@ function compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
         r_, P_ = data[:,1], data[:,2]
 
     else
-        error("Bound-state electron wavefunction not found.")
+        error("Bound-state electron wavefunction not found for Z=$Z, n=$n, l=$l. " *
+              "Supported combinations: Li(Z=3): 1s,2s; Ne(Z=10): 1s,2p; " *
+              "Ar(Z=18): 1s,3p; Kr(Z=36): 1s,4p; Xe(Z=54): 1s,5p")
     end
 
-    # Interpolating the 
+    # Interpolate the wavefunction data for smooth representation
     itp = Dierckx.Spline1D(r_, P_)
     P = itp.(r_)
 
@@ -97,61 +151,161 @@ end
 
 
 """
-    bessel_electron(ε::Flost64, l::Int64, r::Vector{Float64})
+    bessel_electron(ε::Float64, l::Int64, r::Vector{Float64}) → (Vector{Float64}, Vector{Float64}, Float64)
 
-Computes the radial part of the continuum (free) electron with Bessel function 
-                        `P (r) = r jₗ(pr)`
-Returns the radial wavefunction of type `Vector{Float64}`
+Computes the free electron continuum wavefunction using spherical Bessel functions.
+
+# Arguments
+- `ε::Float64`: Kinetic energy of the free electron (in atomic units)
+- `l::Int64`: Orbital angular momentum quantum number
+- `r::Vector{Float64}`: Radial grid points (in bohr)
+
+# Returns
+- `r::Vector{Float64}`: Input radial grid
+- `P::Vector{Float64}`: Radial wavefunction P(r) = r * jₗ(pr)
+- `δ::Float64`: Phase shift (always 0.0 for free electrons)
+
+# Physics
+For a free electron in the absence of any potential, the radial wavefunction is:
+```
+P(r) = r * jₗ(pr)
+```
+where jₗ is the spherical Bessel function of order l, and p = √(2ε) is the momentum.
+
+This represents the exact solution to the Schrödinger equation with V(r) = 0.
+
+# Example
+```julia
+r_grid = range(0.1, 50.0, 500)
+energy = 1.0  # 1 Hartree kinetic energy
+l = 1  # p-wave
+
+r, P, phase = bessel_electron(energy, l, r_grid)
+```
 """
 function bessel_electron(ε::Float64, l::Int64, r::Vector{Float64})
-    # linear momentum of the electron
+    # Linear momentum of the electron: p = √(2mε) with m=1 in atomic units
     p = sqrt(2ε)    
 
-    # Radial part of the continuum electron P = r * jₗ(pr)
+    # Radial part of the continuum electron: P(r) = r * jₗ(pr)
+    # The factor of r converts from reduced radial function u(r) to P(r)
     P = @. r * SpecialFunctions.sphericalbesselj(l, p * r)
 
-    return r, P, 0.0
+    return r, P, 0.0  # Phase shift is zero for free electrons
 end
 
 
 """
-    distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, pot::Vector{Float64})
+    distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64}) → (Vector{Float64}, Vector{Float64}, Float64)
 
-Computes the distorted wave function of continuum photo electron with Bessel function
-Returns the radial wavefunction and phase-shift of type `(Vector{Float64}, Float64)`
+Computes the distorted wave continuum electron wavefunction in an atomic potential.
+
+# Arguments
+- `ε::Float64`: Kinetic energy of the electron (in atomic units)
+- `l::Int64`: Orbital angular momentum quantum number  
+- `r::Vector{Float64}`: Radial grid points (in bohr)
+- `rV::Vector{Float64}`: Potential energy array V(r) at grid points (in atomic units)
+
+# Returns
+- `r::Vector{Float64}`: Input radial grid
+- `P::Vector{Float64}`: Normalized radial wavefunction P(r)
+- `δ::Float64`: Total phase shift (inner + Coulomb contributions)
+
+# Physics
+Solves the radial Schrödinger equation with the given potential:
+```
+d²P/dr² + [2ε - 2V(r) - l(l+1)/r²]P = 0
+```
+
+The wavefunction asymptotically behaves as:
+```
+P(r) → sin(pr - lπ/2 + δₗ) / p    as r → ∞
+```
+
+This accounts for scattering from the atomic potential, providing more accurate
+wavefunctions for photoionization calculations than free electron approximations.
+
+# Implementation
+Uses a Fortran library (mod_sfree.so) for numerical integration of the 
+radial Schrödinger equation with proper boundary conditions.
+
+# Example  
+```julia
+r_grid = range(0.1, 50.0, 500)
+V_coulomb = -2.0 ./ r_grid  # Hydrogen-like potential
+energy = 0.5  # 0.5 Hartree kinetic energy
+
+r, P, delta = distorted_electron(energy, 0, r_grid, V_coulomb)
+println("s-wave phase shift: ", delta, " radians")
+```
 """
 function distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64})
 
-    # Radial part and phase shift of the continuum electron
-    npts=length(r)   # No of radila points
-    r0=zeros(npts+1); r0[2:npts+1]=r
-    rV0=zeros(npts+1); rV0[2:npts+1]=rV
-    iPhase=Ref{Float64}(0.0)
-    cPhase=Ref{Float64}(0.0)
+    # Prepare arrays for Fortran interface
+    npts=length(r)   # Number of radial points
+    r0=zeros(npts+1); r0[2:npts+1]=r      # Fortran 1-based indexing
+    rV0=zeros(npts+1); rV0[2:npts+1]=rV   # Potential array with 1-based indexing
+    
+    # Phase shift references for Fortran output
+    iPhase=Ref{Float64}(0.0)  # Inner phase shift
+    cPhase=Ref{Float64}(0.0)  # Coulomb phase shift
+    
+    # Output arrays (oversized for safety)
     r_=zeros(Float64,25000)
-    P=zeros(Float64,25000)
-    Q=zeros(Float64,25000)
+    P=zeros(Float64,25000)   # Large component (radial wavefunction)
+    Q=zeros(Float64,25000)   # Small component (for relativistic case)
 
-    #radial so file name defined at the toP
-
+    # Call Fortran subroutine for numerical integration
     ccall((:mysfree, freeSchrodinger), Cvoid, 
-            (Ref{Int64},Ptr{Float64}, Ptr{Float64}, Ref{Float64}, Ref{Int64}, Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ref{Float64}, Ref{Float64}), 
+            (Ref{Int64},Ptr{Float64}, Ptr{Float64}, Ref{Float64}, Ref{Int64}, 
+             Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ref{Float64}, Ref{Float64}), 
             npts, r0, rV0, ε, l, r_, P, Q, iPhase, cPhase)
     
-    print("Inner phase shift = ", iPhase.x, "  coulomb phase shift = ", cPhase.x)
+    println("Inner phase shift = ", iPhase.x, "  Coulomb phase shift = ", cPhase.x)
 
-    # liner momentum
+    # Linear momentum for normalization
     p = sqrt(2ε)
 
-    return r, (P[2:npts+1] ./ p), iPhase.x + cPhase.x
+    return r, (P[2:npts+1] ./ p), iPhase.x + cPhase.x  # Return normalized P(r) and total phase
 end
 
 
 """
-    compute_partial_wave(l::Int64, p_electron::ContinuumElectron, a_electron::AtomicElectron)
+    compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron) → PartialWave
 
-Computes the `l`th partial wave for the given photo electron energy and ( if distorted wave) with the given atomic potential.
-Returns an element of type `PartialWave`.
+Computes a partial wave for photoionization calculations.
+
+# Arguments
+- `l::Int64`: Orbital angular momentum quantum number
+- `j::Rational{Int64}`: Total angular momentum quantum number (j = l ± 1/2)
+- `p_electron::ContinuumElectron`: Continuum electron specification (energy, solution type)
+- `a_electron::AtomicElectron`: Bound atomic electron data
+
+# Returns
+- `PartialWave`: Structure containing energy, quantum numbers, wavefunction, and phase shift
+
+# Physics
+Computes the continuum electron partial wave corresponding to the photoionization
+transition from the bound atomic orbital. The choice of solution method (Bessel vs 
+Distorted) affects the accuracy:
+
+- **Bessel**: Free electron approximation, ignores atomic potential
+- **Distorted**: Includes scattering from atomic potential (more accurate)
+
+# Example
+```julia
+# Set up bound and continuum electrons
+atom = compute_atomic_electron(18, 3, 1)  # Ar 3p
+continuum = ContinuumElectron(1.0, :Distorted)  # 1 Hartree, distorted wave
+
+# Compute p-wave (l=1) partial wave
+partial_wave = compute_partial_wave(1, 3//2, continuum, atom)
+```
+
+# Notes
+- The radial grid from the atomic electron is used for the continuum calculation
+- Phase shifts are important for interference effects in photoionization
+- Distorted waves require the atomic potential (currently needs rV to be defined)
 """
 function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron)
     P = zeros(Float64, length(a_electron.r))  ; δ = 0.0
@@ -159,11 +313,11 @@ function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::Continuu
     if p_electron.solution == :Bessel
         r, P, δ = bessel_electron(p_electron.ε, l, a_electron.r)
     elseif p_electron.solution == :Distorted
+        # Note: rV needs to be defined in the calling scope or passed as parameter
         r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
     end
 
     return PartialWave(p_electron.ε, l, j, P, δ)
-
 end
 
 # """
@@ -384,7 +538,7 @@ end
 
 # Generates the continuum (photo) electron radial wavefunctions for energy `E` and orbital angular momentum `l`
 # """
-# function continuumElectron-old(E::Float64, l::Int64, pot::Vector{Float64})
+# function continuumElectron(E::Float64, l::Int64, pot::Vector{Float64})
 #     k = sqrt(2E)
 #     Z = 1  # Nuclear charge (Hydrogen atom)
 

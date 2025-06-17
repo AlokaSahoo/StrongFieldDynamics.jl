@@ -74,14 +74,14 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                 factor3 = Ylm(l, mj - msp, θ, ϕ) *
                         ClebschGordan(l, mj - msp, 1//2, msp, j, mj) *
                         inner_product(p_partialwave, a_electron, r)
-                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ)
+                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ, ϕ)
             # println("factor3 $factor3")
             # println("F2_integral $(StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ))")
             end
         end
     end
-    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=1)
-    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=-1)
+    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # println("F1_integral 1 ", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=1))
     # println("F1_integral -1", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=-1))
