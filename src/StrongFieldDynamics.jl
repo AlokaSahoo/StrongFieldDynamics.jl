@@ -20,11 +20,7 @@ This package provides tools for:
 # Example
 ```julia
 using StrongFieldDynamics
-
-# Example usage would go here once specific functions are documented
 ```
-
-See also: [`amplitudes`](@ref), [`electron_wavefunction`](@ref), [`pulse_shape_integral`](@ref)
 """
 module StrongFieldDynamics
 
