@@ -93,9 +93,21 @@ end
 
 
 """
-    reduced_matrix_element(εp, lp, jp, n, l, j)
+    reduced_matrix_element(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
 
-Computes the reduced matrix element `<εp lp jp || p || n l j>`
+Computes the reduced matrix element `<εp lp jp || p || n l j>` for the momentum operator 
+between a continuum electron partial wave and an atomic (bound) electron state.
+
+# Arguments
+- `p_partialwave::PartialWave`: Continuum electron partial wave with quantum numbers lp, jp
+- `a_electron::AtomicElectron`: Atomic (bound) electron with quantum numbers l, j  
+- `r::Vector{Float64}`: Radial grid points for numerical integration
+
+# Returns
+- `ComplexF64`: The reduced matrix element value
+
+# References
+- Equation (16) from PRA 2023 paper for the radial integral formulation
 """
 function reduced_matrix_element(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
 
@@ -127,6 +139,7 @@ function reduced_matrix_element(p_partialwave::PartialWave, a_electron::AtomicEl
             for ms in -1//2:1//2
                 
                 result_sum += ClebschGordan(lp, mp, 1//2, ms, jp, (mp + ms)) * ClebschGordan(l, m, 1//2, ms, j, (m + ms))
+                # Debug output for Clebsch-Gordan coefficients (commented)
                 # println("ClebschGordan($lp, $mp, 1//2, $ms, $jp, $(mp+ms)) ClebschGordan($l, $m, 1//2, $ms, $j, $(m + ms))")
                 # println(ClebschGordan(lp, mp, 1//2, ms, jp, (mp + ms)), " ", ClebschGordan(l, m, 1//2, ms, j, (m + ms)))
             end
@@ -135,6 +148,7 @@ function reduced_matrix_element(p_partialwave::PartialWave, a_electron::AtomicEl
 
     result = result_sum * matrix_element_inner
 
+    # Debug output for intermediate results (commented)
     # println("matrix inner $(matrix_element_inner) and result $(result)")
     
     return result
@@ -144,16 +158,34 @@ end
 """
     inner_product(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
 
-Calculates the inner product of continuum and bound (atomic) electron radial wavefunction
+Calculates the overlap integral between continuum and bound electron radial wavefunctions.
+
+This function computes the inner product ⟨ψ_continuum|ψ_bound⟩ of the radial parts of
+the electron wavefunctions, which appears in the third term of the scattering amplitude
+calculation and represents the direct overlap between initial and final states.
+
+# Arguments
+- `p_partialwave::PartialWave`: Continuum electron partial wave containing radial wavefunction P
+- `a_electron::AtomicElectron`: Atomic electron containing bound state radial wavefunction P  
+- `r::Vector{Float64}`: Radial grid points used for numerical integration
+
+# Returns
+- `ComplexF64`: The overlap integral multiplied by the phase factor (-i)^l
+
+# Implementation Details
+- Uses cubic spline interpolation (Dierckx.jl) for smooth integration
+- Applies numerical quadrature (QuadGK.jl) for accurate integral evaluation
+- Includes the angular momentum phase factor (-i)^l_p for proper quantum mechanical normalization
 """
 function inner_product(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
-    # Interpolated the radial function to Spline for inegration
+    # Interpolate the radial functions using cubic splines for smooth integration
     cP = Dierckx.Spline1D(r, p_partialwave.P)
     aP = Dierckx.Spline1D(r, a_electron.P)
 
+    # Compute the radial overlap integral ∫ P_continuum(r) * P_bound(r) dr
     result = quadgk(r -> cP(r) * aP(r), r[1], r[end])[1]
 
-    # Multiply im^(-l)
+    # Apply the angular momentum phase factor (-i)^l_p
     result = result * (-im)^(p_partialwave.l)
 
     return result

@@ -37,10 +37,9 @@ Planned extensions include:
 ## Documentation
 
 For detailed theory, usage examples, and API reference, see the [documentation](https://AlokaSahoo.github.io/StrongFieldDynamics.jl/stable/).
+Also, detailed documentation is available in the docstrings of individual functions. Use `?function_name` in the Julia REPL for help.
 
 ## Installation
-
-To install the package, use Julia's package manager:
 
 ```julia
 using Pkg
