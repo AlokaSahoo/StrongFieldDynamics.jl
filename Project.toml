@@ -21,7 +21,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 AssociatedLegendrePolynomials = "1.0"
-CairoMakie = "0.13, 0.14"
+CairoMakie = "0.13, 0.14, 0.15"
 DelimitedFiles = "1.9"
 Dierckx = "0.5"
 Distributed = "1.11, 1.10"
