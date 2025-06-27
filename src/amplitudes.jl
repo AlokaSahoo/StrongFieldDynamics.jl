@@ -28,7 +28,7 @@ Computes the direct scattering amplitude
 """
 function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, mj::Rational{Int64}, msp::Rational{Int64}, θ::Float64, ϕ::Float64)
     # Maximum number of partial waves
-    lp_max = 2
+    lp_max = 3
 
     l = a_electron.l
     j = a_electron.j
@@ -74,14 +74,14 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                 factor3 = Ylm(l, mj - msp, θ, ϕ) *
                         ClebschGordan(l, mj - msp, 1//2, msp, j, mj) *
                         inner_product(p_partialwave, a_electron, r)
-                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ, ϕ)
+                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ)
             # println("factor3 $factor3")
             # println("F2_integral $(StrongFieldDynamics.F2_integral_quad(pulse, a_electron, p_electron, θ))")
             end
         end
     end
-    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
-    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # println("F1_integral 1 ", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=1))
     # println("F1_integral -1", StrongFieldDynamics.F1_integral_quad(pulse, a_electron, p_electron, θ ; sign=-1))
@@ -188,5 +188,120 @@ function inner_product(p_partialwave::PartialWave, a_electron::AtomicElectron, r
     # Apply the angular momentum phase factor (-i)^l_p
     result = result * (-im)^(p_partialwave.l)
 
+    return result
+end
+
+
+"""
+    probality_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
+
+Calculates the ionization probability
+"""
+function probability_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    prob = zero(Float64)
+
+    for m = -a_electron.l//1 : a_electron.l//1
+        amplitude = StrongFieldDynamics.T0_uncoupled( pulse, a_electron, p_electron, m, θ, ϕ)
+        prob += abs2(amplitude)
+    end
+
+    prob = prob * p_electron.p / (2.0*a_electron.j + 1)
+
+end
+
+
+"""
+    T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, m::Rational{Int64}, θ::Float64, ϕ::Float64)
+
+Computes the direct scattering amplitude 
+"""
+function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, m::Rational{Int64}, θ::Float64, ϕ::Float64)
+    # Maximum number of partial waves
+    lp_max = 3
+
+    l = a_electron.l
+    j = a_electron.j
+    r = a_electron.r
+    u = pulse.u
+
+    # Intitialize term1, term2, term3
+    term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; term3 = zero(ComplexF64) ;
+
+    # Evaluation for term1 and term2
+    for lp in 0:lp_max
+            # reduced matrix element
+            p_partialwave = StrongFieldDynamics.compute_partial_wave(lp, 0//1, p_electron, a_electron)
+            matrix_elem12 = reduced_matrix_element_uncoupled(p_partialwave, a_electron, r)
+                
+            for q in -1:1
+
+                if matrix_elem12 == 0.0 continue end
+
+                # Term 1 contribution
+                factor1 = (-1)^q * u[q] * Ylm(lp, (m - q), θ, ϕ) *
+                            ClebschGordan(l, m, 1, -q, lp, (m - q) )
+                term1 += factor1 * matrix_elem12 
+
+                # Term 2 contribution 
+                factor2 = -u[-q] * Ylm(lp, (m + q), θ, ϕ) *
+                            ClebschGordan(l, m, 1, q, lp, (m + q) )
+                term2 += factor2 * matrix_elem12
+            end
+
+            # Only compute term3 if lp == l
+            if lp == l
+                factor3 = Ylm(l, m, θ, ϕ) *
+                        inner_product(p_partialwave, a_electron, r)
+                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ)
+            end
+    end
+    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+
+    # Total result
+    return term1 + term2 + term3
+end
+
+
+"""
+    reduced_matrix_element_uncoupled(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
+
+Computes the reduced matrix element `<εp lp jp || p || n l j>` for the momentum operator 
+between a continuum electron partial wave and an atomic (bound) electron state.
+
+# Arguments
+- `p_partialwave::PartialWave`: Continuum electron partial wave with quantum numbers lp, jp
+- `a_electron::AtomicElectron`: Atomic (bound) electron with quantum numbers l, j  
+- `r::Vector{Float64}`: Radial grid points for numerical integration
+
+# Returns
+- `ComplexF64`: The reduced matrix element value
+
+# References
+- Equation (16) from PRA 2023 paper for the radial integral formulation
+"""
+function reduced_matrix_element_uncoupled(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
+
+    lp = p_partialwave.l ;    jp = p_partialwave.j
+    l  = a_electron.l    ;    j  = a_electron.j
+
+    # Placeholder for the inner matrix element <εp lp || p || n l>
+    prefactor = (-im)^(lp+1) * (- sqrt(2*lp + 1) ) * ClebschGordan(lp, 0, 1, 0, l, 0) 
+
+    # To further skip calculations if prefactor is zero
+    if prefactor == zero(ComplexF64) return zero(ComplexF64) end
+
+    # Continuum electron partial waves radial part
+    cP = Dierckx.Spline1D(r, p_partialwave.P)
+
+    # atomic (bound) electron radial part
+    aP = Dierckx.Spline1D(r, a_electron.P)
+
+    # Equation (16) PRA 2023
+    integral =  quadgk(r -> ( cP(r) / r ) * ( r * Dierckx.derivative(aP, r) - 0.5 * (lp - l) * (lp + l + 1) * aP(r) ), r[1], r[end])[1]
+    
+    result = prefactor * integral
+    
     return result
 end

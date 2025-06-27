@@ -24,7 +24,7 @@ All internal values are stored in atomic units.
 - `Tp::Float64`: Pulse duration (a.u.)
 - `Up::Float64`: Ponderomotive energy (a.u.)
 - `f::Function`: Envelope function f(t)
-- `ϕ::Float64`: Carrier-envelope phase (radians)
+- `cep::Float64`: Carrier-envelope phase (radians)
 - `helicity::Int64`: Helicity (+1 or -1)
 - `ϵ::Float64`: Ellipticity parameter (0=linear, 1=circular)
 - `u::QuasiVector{Float64, Tuple{UnitRange{Int64}}}`: Polarization unit vector
@@ -35,7 +35,7 @@ All internal values are stored in atomic units.
 - `λ`: Wavelength (can include units, e.g., 800u"nm", or numeric value assuming nm)
 - `cycles`: Number of optical cycles (positive integer)
 - `envelope`: Envelope type (:sin2, :gauss, :flat) or custom function f(t)
-- `ϕ`: Carrier-envelope phase in radians (default: 0.0)
+- `cep`: Carrier-envelope phase in radians (default: 0.0)
 - `helicity`: Helicity (+1 or -1, default: +1)
 - `ϵ`: Ellipticity parameter (0=linear, 1=circular, default: 0.0)
 
@@ -285,7 +285,7 @@ end
 
 """
     compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse; θ::Real=pi/2, ϕ::Real=0.0,
-                               energy_range::Tuple{Float64,Float64}=(1e-6, 0.5), n_points::Int64=200) -> EnergyDistribution
+                               energy_range::Tuple{Float64,Float64}=(1e-6, 0.5), n_points::Int64=200, coupled::Bool=true) -> EnergyDistribution
 
 Computes the energy-resolved photoelectron spectrum at specified angles using SFA.
 
@@ -300,15 +300,22 @@ Computes the energy-resolved photoelectron spectrum at specified angles using SF
 function compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse; 
                                     θ::Real=pi/2, ϕ::Real=0.0,
                                     energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
-                                    n_points::Int64=200)
+                                    n_points::Int64=200,
+                                    coupled::Bool=true)
 
     energies = range(energy_range[1], energy_range[2], length=n_points) |> collect
     distribution = zeros(Float64, n_points)
     
     p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), :Bessel) for ep in energies]
 
-    Threads.@threads for i in eachindex(p_electrons)
-        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+    if coupled
+        Threads.@threads for i in eachindex(p_electrons)
+            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+        end
+    else
+        Threads.@threads for i in eachindex(p_electrons)
+            distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+        end
     end
     
     return EnergyDistribution(θ, ϕ, energies, distribution)
@@ -320,7 +327,8 @@ end
                                 pulse::Pulse; energy::Float64=1.0,
                                 θ::Float64=0.0,
                                 ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
-                                n_ϕ::Int=100) -> AngularDistribution
+                                n_ϕ::Int=100,
+                                coupled::Bool=true) -> AngularDistribution
 
 Computes the angular distribution of photoelectrons at fixed energy and theta using SFA.
 
@@ -336,15 +344,22 @@ function compute_angular_distribution(a_electron::AtomicElectron,
                                      pulse::Pulse; energy::Float64=1.0,
                                      θ::Real=pi/2,
                                      ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
-                                     n_ϕ::Int=200)
+                                     n_ϕ::Int=200,
+                                     coupled::Bool=true)
     
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect
     distribution = zeros(Float64, n_ϕ)
     
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel)
 
-    Threads.@threads for i in eachindex(ϕs)
-        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+    if coupled
+        Threads.@threads for i in eachindex(ϕs)
+            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+        end
+    else
+        Threads.@threads for i in eachindex(ϕs)
+            distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+        end
     end
     return AngularDistribution(energy, θ, ϕs, distribution)
 end
@@ -360,21 +375,41 @@ Computes the 3D momentum distribution of photoelectrons using SFA in spherical c
 # Arguments
 - `a_electron::AtomicElectron`: Initial bound state
 - `pulse::Pulse`: Laser pulse parameters
-- `p_max::Float64=2.0`: Maximum momentum magnitude (a.u.)
+- `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
 - `n_p::Int=50`: Number of momentum magnitude points
-- `n_θ::Int=25`: Number of polar angle points
+- `n_θ::Int=1`: Number of polar angle points
 - `n_φ::Int=50`: Number of azimuthal angle points
 """
 function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse; 
-                                      p_max::Float64=2.0, n_p::Int=50, 
-                                      n_θ::Int=25, n_φ::Int=50)
-    # TODO: Implement SFA momentum distribution calculation
-    p = range(0.0, p_max, length=n_p) |> collect
-    θ = range(0.0, π, length=n_θ) |> collect
-    φ = range(0.0, 2π, length=n_φ) |> collect
-    distribution = zeros(Float64, n_p, n_θ, n_φ)
+                                      energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
+                                      n_theta::Int=1, n_phi::Int=50, coupled::Bool=true)
+    energies = range(energy_range[1], energy_range[2], length=n_p) |> collect
+    # θ = range(0.0, π, length=n_theta) |> collect
+    θs = [float(pi/2)] |> collect
+    φs = range(0.0, 2π, length=n_phi) |> collect
+    distribution = zeros(Float64, n_p, n_theta, n_phi)
+
+    p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel) for energy in energies ]
+
+    if coupled
+        Threads.@threads for i in eachindex(p_electrons)
+            for j in eachindex(θs)
+                for k in eachindex(φs)
+                    distribution[i, j, k] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], θs[j], φs[k])
+                end
+            end
+        end
+    else
+        Threads.@threads for i in eachindex(p_electrons)
+            for j in eachindex(θs)
+                for k in eachindex(φs)
+                    distribution[i, j, k] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electrons[i], θs[j], φs[k])
+                end
+            end
+        end        
+    end
     
-    return MomentumDistribution(p, θ, φ, distribution)
+    return MomentumDistribution(sqrt.(2*energies), θs, φs, distribution)
 end
 
 

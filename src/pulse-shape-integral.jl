@@ -2,6 +2,123 @@ using QuadGK
 
 export sin2Sv
 
+include("levin-integration.jl")
+
+"""
+    F1_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F1_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
+    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω)
+
+    ga = 0.0
+    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.Tp
+
+    res = levin_integrate_approxfun(pulse.f, gp, 0.0, pulse.Tp, ga, gb)
+
+    return pulse.A₀ * exp(-im * sign * pulse.cep) * res
+end
+
+
+"""
+    F2_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F2_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    a2(t) = ( pulse.A₀^2 / (1 + pulse.ϵ^2) ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
+    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
+    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
+
+    ga = 0.0        # for sin2 pulse
+    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.Tp
+
+    return levin_integrate_approxfun(a2, gp, 0.0, pulse.Tp, ga, gb)
+end
+
+
+"""
+    F1_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F1_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
+    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω)
+
+    ga = 0.0
+    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.Tp
+
+    res = levin_integrate(pulse.f, gp, 0.0, pulse.Tp, ga, gb, 100)
+
+    return pulse.A₀ * exp(-im * sign * pulse.cep) * res
+end
+
+
+"""
+    F2_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F2_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    a2(t) = ( pulse.A₀^2 / (1 + pulse.ϵ^2) ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
+    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
+    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
+
+    ga = 0.0        # for sin2 pulse
+    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.Tp
+
+    return levin_integrate(a2, gp, 0.0, pulse.Tp, ga, gb, 100)
+end
+
+
+"""
+    F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
+
+
+"""
+function F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+    # integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*sin2Sv_quad(t, θ, ϕ, pulse, p_electron))
+    # res, _ = quadgk(integrand, 0.0, pulse.Tp, maxevals=10^1)
+    integrand_real(t) = pulse.f(t) * cos(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv_quadgk(t, θ, ϕ, pulse, p_electron))
+    integrand_imag(t) = pulse.f(t) * sin(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv_quadgk(t, θ, ϕ, pulse, p_electron))
+    real_part, _ = quadgk(integrand_real, 0.0, pulse.Tp, maxevals=10^5)
+    imag_part, _ = quadgk(integrand_imag, 0.0, pulse.Tp, maxevals=10^5)
+
+    return pulse.A₀ * exp(-im * sign * pulse.cep) * (real_part + im * imag_part)
+    # return pulse.A₀ * exp(-im * sign * pulse.cep) * res
+end
+
+
+"""
+    F2_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+
+"""
+function F2_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    function A2(t::Float64)
+        a = ( ( pulse.A₀ / sqrt(1 + pulse.ϵ^2) )  * pulse.f(t) * exp(-im * (pulse.ω * t + pulse.cep)) ) .* pulse.helicity
+        return abs2(a)
+    end
+
+    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * sin2Sv_quadgk(t, θ, ϕ, pulse, p_electron) ) 
+
+    return quadgk(integrand, 0.0, pulse.Tp, maxevals=10^5)[1]
+end
+
+
 
 #=============================================== From JAC ==========================================================#
 @doc raw"""
@@ -145,53 +262,52 @@ function F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::
 end
 
 
-@doc raw"""
 
-    F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
-
-Computes the pulse shape integral of the form:
-\mathcal{F}_1\left[\pm \omega ; f ; \mathbf{p}\right] = A_0 e^{\mp i \phi_{\text{CEP}}} \int_{-\infty}^{\infty} d\tau f(\tau) e^{-i(\varepsilon_i \pm \omega)\tau + i S_p(\tau)}, \\
-Returns the integration result of type ComplexF64.
 """
-function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+    sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-    # integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*sin2Sv_quad(t, θ, ϕ, pulse, p_electron))
-    # res, _ = quadgk(integrand, 0.0, pulse.Tp, maxevals=10^1)
-    integrand_real(t) = pulse.f(t) * cos(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv(t, θ, ϕ, pulse, p_electron))
-    integrand_imag(t) = pulse.f(t) * sin(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv(t, θ, ϕ, pulse, p_electron))
-    real_part, _ = quadgk(integrand_real, 0.0, pulse.Tp, maxevals=10^5)
-    imag_part, _ = quadgk(integrand_imag, 0.0, pulse.Tp, maxevals=10^5)
 
-    return pulse.A₀ * exp(-im * sign * pulse.cep) * (real_part + im * imag_part)
-    # return pulse.A₀ * exp(-im * sign * pulse.cep) * res
+"""
+function sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    term1 = p_electron.ε * t
+
+    integrand2(τ)  = pulse.f(τ) * ( cos(pulse.ω*τ + pulse.cep) * cos(ϕ) + pulse.helicity * pulse.ϵ * sin(pulse.ω*τ + pulse.cep) * sin(ϕ) )
+    int2, _ = quadgk(integrand2, 0, t, maxevals=1e5) 
+    term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2)
+
+    integrand3(τ)  = pulse.f(τ)^2 * ( cos(pulse.ω*τ + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*τ + pulse.cep)^2 )
+    int3, _ = quadgk(integrand3, 0, t, maxevals=1e5) 
+    term3 = int3 * (pulse.A₀)^2 / (1+pulse.ϵ^2) / 2.0
+
+    return term1 + term2 + term3
+
 end
 
 
-@doc raw"""
-
-    F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
-
-Computes the pulse shape integral of the form:
-\mathcal{F}_2\left[f ; \mathbf{p}\right] &= \int_{-\infty}^{\infty} d\tau A^2(\tau) e^{-i \varepsilon_p \tau + i S_p(\tau)}
-Returns the integration result of type ComplexF64.
 """
-function F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+    sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-    function A2(t::Float64)
-        a = ( pulse.A₀ * pulse.f(t) * exp(-im * (pulse.ω * t + pulse.cep)) ) .* pulse.helicity
-        return (a' * a)
-    end
 
-    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * sin2Sv(t, θ, ϕ, pulse, p_electron) ) 
+"""
+function sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-    return quadgk(integrand, 0.0, pulse.Tp, maxevals=10^5)[1]
+    term1 = p_electron.ε
+
+    term2 = ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2) ) * 
+            pulse.f(t) * ( cos(pulse.ω*t + pulse.cep) * cos(ϕ) + pulse.helicity*pulse.ϵ * sin(pulse.ω*t + pulse.cep) * sin(ϕ) )
+
+    term3 = ( (pulse.A₀^2) / (1+pulse.ϵ^2) / 2.0 ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
+
+    return term1 + term2 + term3
+
 end
 
 
 """
     sin2Sv(t::Float64, θ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-Defines the Volkov phase integral over time for a sin² envelope.
+Defines the Volkov phase integral over time for a sin² envelope. Only for circular polarization 
 """
 function sin2Sv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
@@ -221,7 +337,11 @@ function sin2Sv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::
     return εp * t + f_tau
 end
 
-function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.Pulse, p_electron::StrongFieldDynamics.ContinuumElectron)
+"""
+sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+"""
+function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
     # Phtotelectron energy
     εp = p_electron.ε
@@ -247,22 +367,49 @@ function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDyn
     return term1 + term2 + term3
 end
 
-"""
- just the t substitution
-"""
-function sin2Sv_prime(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.Pulse, p_electron::StrongFieldDynamics.ContinuumElectron)
 
-    # # Phtotelectron energy
+"""
+sin2Sv_quadgk(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+"""
+function sin2Sv_quadgk(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.Pulse, p_electron::StrongFieldDynamics.ContinuumElectron)
+
+    # Phtotelectron energy
     # εp = p_electron.ε
-    # # Laser pulse 
+    # Laser pulse 
     # ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+    # a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
 
-    return p_electron.ε + ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0) ) * pulse.f(t) * cos(pulse.ω * t + pulse.cep - pulse.helicity * ϕ) + (pulse.A₀)^2 * (pulse.f(t))^2 / 4.0
+    term1 = p_electron.ε * t
+
+    int2, _ = quadgk(τ -> pulse.f(τ) * ( cos(pulse.ω * τ + pulse.cep) * cos(ϕ) + pulse.helicity * pulse.ϵ * sin(pulse.ω*τ + pulse.cep) * sin(ϕ) ), 0, t, maxevals=10^5) 
+    term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(1.0 + pulse.ϵ^2)
+
+    int3, _ = quadgk(τ -> ( pulse.f(τ)^2 * (cos(pulse.ω * τ + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω * τ + pulse.cep)^2) ), 0, t, maxevals=10^5) 
+    term3 = int3 * (pulse.A₀)^2 / 2.0 / (1.0 + pulse.ϵ^2)
+
+    return term1 + term2 + term3
+end
+
+
+"""
+sin2Sv_prime(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+
+"""
+function sin2Sv_prime(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    return p_electron.ε + 
+            ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0) ) * pulse.f(t) * cos(pulse.ω * t + pulse.cep - pulse.helicity * ϕ) + 
+            (pulse.A₀)^2 * (pulse.f(t))^2 / 4.0
 
 end
 
 """
-first integration then derivative
+    sin2Sv_prime_b(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+Only for circular polarizaton,
+Takes the analytical derivative from the expression in Appendix B, Birger 2020 for sin2 pulse
 """
 function sin2Sv_prime_b(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
@@ -287,6 +434,8 @@ function sin2Sv_prime_b(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_el
     end
 
 end
+
+
 ################################################################## Danish's Part #################################################################
 
 # abstract type Sign end

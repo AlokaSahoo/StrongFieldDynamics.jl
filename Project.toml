@@ -4,6 +4,7 @@ authors = ["Aloka Kumar Sahoo <aloka_s@ph.iitr.ac.in>"]
 version = "1.0.0-DEV"
 
 [deps]
+ApproxFun = "28f2ccd6-bb30-5033-b560-165f7b14dc2f"
 AssociatedLegendrePolynomials = "2119f1ac-fb78-50f5-8cc0-dda848ebdb19"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
@@ -20,6 +21,7 @@ WignerSymbols = "9f57e263-0b3d-5e2e-b1be-24f2bb48858b"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
+ApproxFun = "0.13"
 AssociatedLegendrePolynomials = "1.0"
 CairoMakie = "0.13, 0.14"
 DelimitedFiles = "1.9"

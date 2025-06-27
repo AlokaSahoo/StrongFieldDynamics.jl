@@ -4,7 +4,7 @@ export plot_energy_distribution, plot_angular_distribution, plot_momentum_distri
 
 """
     plot_energy_distribution(ed::EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
-                            ylabel::String="Differential Probability d²P/dΩdE", save_path::String="")
+                            ylabel::String="Probability", save_path::String="")
 
 Plot the energy distribution of photoelectrons with proper labels.
 
@@ -12,14 +12,14 @@ Plot the energy distribution of photoelectrons with proper labels.
 - `ed::EnergyDistribution`: Energy distribution data to plot
 - `title::String=""`: Plot title (auto-generated if empty)
 - `xlabel::String="Energy (a.u.)"`: X-axis label
-- `ylabel::String="Differential Probability d²P/dΩdE"`: Y-axis label  
+- `ylabel::String="Probability"`: Y-axis label  
 - `save_path::String=""`: Path to save the plot (optional)
 
 # Returns
 - `Figure`: CairoMakie figure object
 """
 function plot_energy_distribution(ed::EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
-                                 ylabel::String="Differential Probability d²P/dΩdE", save_path::String="")
+                                 ylabel::String="Probability", save_path::String="")
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
     
@@ -152,7 +152,7 @@ Plot the momentum distribution of photoelectrons with different visualization op
 - `Figure`: CairoMakie figure object
 """
 function plot_momentum_distribution(md::MomentumDistribution; title::String="", save_path::String="", 
-                                   slice_type::Symbol=:p_slice, slice_value::Float64=1.0,
+                                   slice_type::Symbol=:theta_slice, slice_value::Float64=1.0,
                                    colormap=:viridis)
     
     fig = Figure(size=(800, 600))
@@ -181,21 +181,22 @@ function plot_momentum_distribution(md::MomentumDistribution; title::String="", 
         
     elseif slice_type == :theta_slice
         # Plot at fixed polar angle
-        θ_idx = argmin(abs.(md.θ .- slice_value))
-        actual_θ = md.θ[θ_idx]
+        # θ_idx = argmin(abs.(md.θ .- slice_value))
+        # actual_θ = md.θ[θ_idx]
         
         # Create 2D slice: p vs φ
-        slice_data = md.distribution[:, θ_idx, :]
+        slice_data = [ md.distribution[p, 1, phi] for phi in eachindex(md.φ), p in eachindex(md.p)]
         
-        ax = Axis(fig[1, 1], 
+        ax = PolarAxis(fig[1, 1], 
                  xlabel="Azimuthal Angle φ (radians)", 
                  ylabel="Momentum p (a.u.)",
                  title=isempty(title) ? "Momentum Distribution at θ = $(round(actual_θ * 180/π, digits=1))°" : title)
         
-        hm = heatmap!(ax, md.φ, md.p, slice_data, colormap=colormap)
+        hm = surface!(ax, md.φ, md.p, zeros(size(dist)), color = slice_data, shading = NoShading, colormap = :coolwarm)
         
         # Add colorbar
-        Colorbar(fig[1, 2], hm, label="Probability Density")
+        # Colorbar(fig[1, 2], hm, label="Probability Density")
+        Colorbar(f[2, 1], p, vertical = false, flipaxis = false, label="Probability Density")
         
         # Set x-axis ticks in terms of π
         ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
