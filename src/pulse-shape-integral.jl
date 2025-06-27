@@ -155,8 +155,15 @@ Returns the integration result of type ComplexF64.
 """
 function F1_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
 
-    integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*sin2Sv_quad(t, θ, ϕ, pulse, p_electron))
-    return pulse.A₀ * exp(-im * sign * pulse.cep) * quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
+    # integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*sin2Sv_quad(t, θ, ϕ, pulse, p_electron))
+    # res, _ = quadgk(integrand, 0.0, pulse.Tp, maxevals=10^1)
+    integrand_real(t) = pulse.f(t) * cos(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv(t, θ, ϕ, pulse, p_electron))
+    integrand_imag(t) = pulse.f(t) * sin(-(a_electron.ε + sign*pulse.ω)*t + sin2Sv(t, θ, ϕ, pulse, p_electron))
+    real_part, _ = quadgk(integrand_real, 0.0, pulse.Tp, maxevals=10^5)
+    imag_part, _ = quadgk(integrand_imag, 0.0, pulse.Tp, maxevals=10^5)
+
+    return pulse.A₀ * exp(-im * sign * pulse.cep) * (real_part + im * imag_part)
+    # return pulse.A₀ * exp(-im * sign * pulse.cep) * res
 end
 
 
@@ -175,9 +182,9 @@ function F2_integral(pulse::Pulse, a_electron::AtomicElectron, p_electron::Conti
         return (a' * a)
     end
 
-    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * sin2Sv_quad(t, θ, ϕ, pulse, p_electron) ) 
+    integrand(t) = A2(t) * exp( (-im * a_electron.ε * t) + im * sin2Sv(t, θ, ϕ, pulse, p_electron) ) 
 
-    return quadgk(integrand, 0.0, pulse.Tp, rtol=1e-10)[1]
+    return quadgk(integrand, 0.0, pulse.Tp, maxevals=10^5)[1]
 end
 
 
@@ -191,7 +198,7 @@ function sin2Sv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::
     # Phtotelectron energy
     εp = p_electron.ε
     # Laser pulse 
-    ω  = pulse.cep ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
     a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
 
     ck = [-1/4, 1/2, -1/4]
@@ -219,8 +226,8 @@ function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDyn
     # Phtotelectron energy
     εp = p_electron.ε
     # Laser pulse 
-    ω  = pulse.cep ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
-    a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
+    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+    # a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
 
     function sin2env(x) 
         if x < 0 || x >= pulse.Tp
@@ -231,16 +238,55 @@ function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDyn
 
     term1 = εp * t
 
-    int2, _ = quadgk(τ -> sin2env(τ) * cos(ω*τ + ξ), 0, t) 
+    int2, _ = quadgk(τ -> sin2env(τ) * cos(ω*τ + ξ), 0, t, maxevals=10^5) 
     term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0)
 
-    int3, _ = quadgk(τ -> (sin2env(τ))^2, 0, t) 
+    int3, _ = quadgk(τ -> (sin2env(τ))^2, 0, t, maxevals=10^5) 
     term3 = int3 * (pulse.A₀)^2 / 4.0
 
     return term1 + term2 + term3
 end
 
+"""
+ just the t substitution
+"""
+function sin2Sv_prime(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.Pulse, p_electron::StrongFieldDynamics.ContinuumElectron)
 
+    # # Phtotelectron energy
+    # εp = p_electron.ε
+    # # Laser pulse 
+    # ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+
+    return p_electron.ε + ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0) ) * pulse.f(t) * cos(pulse.ω * t + pulse.cep - pulse.helicity * ϕ) + (pulse.A₀)^2 * (pulse.f(t))^2 / 4.0
+
+end
+
+"""
+first integration then derivative
+"""
+function sin2Sv_prime_b(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    # Phtotelectron energy
+    εp = p_electron.ε
+    # Laser pulse 
+    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+    a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
+
+    ck = [-1/4, 1/2, -1/4]
+
+    if t < 0 || t ≥ pulse.Tp
+        return εp
+    else
+        # Compute the additional terms evaluated at t
+        term1 = (3/8) * Up
+        term2 = - (Up * np) / (2 * ω) * (ω / np) * cos((ω * t) / np)
+        term3 = (Up * np) / (16 * ω) * (2 * ω /np) * cos(2 * (ω * t) / np)
+        sum_term = sum((ck[k+2] / (1 + k/np)) * ( ω * (1 + k/np) * cos(ω * (1 + k/np) * t + ξ) ) for k in -1:1)
+
+        return εp + term1 + term2 + term3 + a * sum_term
+    end
+
+end
 ################################################################## Danish's Part #################################################################
 
 # abstract type Sign end
