@@ -18,14 +18,17 @@ Plot the energy distribution of photoelectrons with proper labels.
 # Returns
 - `Figure`: CairoMakie figure object
 """
-function plot_energy_distribution(ed::EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
+function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
                                  ylabel::String="Probability", save_path::String="")
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
     
     # Auto-generate title if not provided
     plot_title = if isempty(title)
-        "Energy Distribution at θ = $(round(ed.θ * 180/π, digits=1))°, φ = $(round(ed.ϕ * 180/π, digits=1))°"
+        # Convert intensity back to W/cm²
+        I_Wcm2 = ed.pulse.I₀ * 3.51e16
+        pulse_info = "I₀ = $(round(I_Wcm2/1e14, digits=1))×10¹⁴ W/cm², $(ed.pulse.np) cycles, ϵ = $(ed.pulse.ϵ), helicity = $(ed.pulse.helicity)"
+        "Energy Distribution at θ = $(round(ed.θ * 180/π, digits=1))°, φ = $(round(ed.ϕ * 180/π, digits=1))°, $(pulse_info)"
     else
         title
     end
@@ -78,7 +81,10 @@ function plot_angular_distribution(ad::AngularDistribution; title::String="", sa
     
     # Auto-generate title if not provided
     plot_title = if isempty(title)
-        "Angular Distribution at E = $(round(ad.energy, digits=3)) a.u., θ = $(round(ad.θ * 180/π, digits=1))°"
+        # Convert intensity back to W/cm²
+        I_Wcm2 = ad.pulse.I₀ * 3.51e16
+        pulse_info = "I₀ = $(round(I_Wcm2/1e14, digits=1))×10¹⁴ W/cm², $(ad.pulse.np) cycles, ϵ = $(ad.pulse.ϵ), helicity = $(ad.pulse.helicity)"
+        "Angular Distribution at E = $(round(ad.energy, digits=3)) a.u., θ = $(round(ad.θ * 180/π, digits=1))°, $(pulse_info)"
     else
         title
     end
@@ -136,7 +142,7 @@ end
 """
     plot_momentum_distribution(md::MomentumDistribution; title::String="", save_path::String="", 
                                slice_type::Symbol=:p_slice, slice_value::Float64=1.0, 
-                               colormap=:viridis)
+                               colormap=nothing)
 
 Plot the momentum distribution of photoelectrons with different visualization options.
 
@@ -153,82 +159,133 @@ Plot the momentum distribution of photoelectrons with different visualization op
 """
 function plot_momentum_distribution(md::MomentumDistribution; title::String="", save_path::String="", 
                                    slice_type::Symbol=:theta_slice, slice_value::Float64=1.0,
-                                   colormap=:viridis)
+                                   colormap=nothing)
     
-    fig = Figure(size=(800, 600))
+    # Define custom colormap
+    custom_colormap = cgrad([:white, :blue, :cyan, :green, :yellow, :orange, :red])
+    colormap = isnothing(colormap) ? custom_colormap : colormap
+    
+    # Generate pulse info for title
+    I_Wcm2 = md.pulse.I₀ * 3.51e16
+    pulse_info = "I₀ = $(round(I_Wcm2/1e14, digits=1))×10¹⁴ W/cm², $(md.pulse.np) cycles, ϵ = $(md.pulse.ϵ), helicity = $(md.pulse.helicity)"
     
     if slice_type == :p_slice
         # Plot at fixed momentum magnitude
         p_idx = argmin(abs.(md.p .- slice_value))
         actual_p = md.p[p_idx]
         
-        # Create 2D slice: θ vs φ
-        slice_data = md.distribution[p_idx, :, :]
-        
-        ax = Axis(fig[1, 1], 
-                 xlabel="Azimuthal Angle φ (radians)", 
-                 ylabel="Polar Angle θ (radians)",
-                 title=isempty(title) ? "Momentum Distribution at p = $(round(actual_p, digits=3)) a.u." : title)
-        
-        hm = heatmap!(ax, md.φ, md.θ, slice_data', colormap=colormap)
-        
-        # Add colorbar
-        Colorbar(fig[1, 2], hm, label="Probability Density")
-        
-        # Set axis ticks in terms of π
-        ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
-        ax.yticks = ([0, π/4, π/2, 3π/4, π], ["0", "π/4", "π/2", "3π/4", "π"])
+        # Create 2D slice: θ vs φ (if multiple theta values exist)
+        if length(md.θ) > 1
+            slice_data = md.distribution[p_idx, :, :]
+            # Normalize the data
+            slice_data_norm = slice_data ./ maximum(slice_data)
+            
+            fig = Figure(size=(800, 600))
+            plot_title = isempty(title) ? "Momentum Distribution at p = $(round(actual_p, digits=3)) a.u., $(pulse_info)" : title
+            ax = Axis(fig[1, 1], 
+                     xlabel="Azimuthal Angle φ (radians)", 
+                     ylabel="Polar Angle θ (radians)",
+                     title=plot_title)
+            
+            hm = heatmap!(ax, md.φ, md.θ, slice_data_norm', colormap=colormap)
+            Colorbar(fig[1, 2], hm, label="Normalized Probability Density")
+            
+            # Set axis ticks in terms of π
+            ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
+            ax.yticks = ([0, π/4, π/2, 3π/4, π], ["0", "π/4", "π/2", "3π/4", "π"])
+        else
+            # Single theta value - create 1D plot vs φ
+            slice_data = md.distribution[p_idx, 1, :]
+            # Normalize the data
+            slice_data_norm = slice_data ./ maximum(slice_data)
+            
+            fig = Figure(size=(800, 600))
+            plot_title = isempty(title) ? "Momentum Distribution at p = $(round(actual_p, digits=3)) a.u., θ = $(round(md.θ[1] * 180/π, digits=1))°, $(pulse_info)" : title
+            ax = Axis(fig[1, 1], 
+                     xlabel="Azimuthal Angle φ (radians)", 
+                     ylabel="Normalized Probability Density",
+                     title=plot_title)
+            
+            lines!(ax, md.φ, slice_data_norm, linewidth=2, color=:blue)
+            ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
+        end
         
     elseif slice_type == :theta_slice
-        # Plot at fixed polar angle
-        # θ_idx = argmin(abs.(md.θ .- slice_value))
-        # actual_θ = md.θ[θ_idx]
+        # Plot at fixed polar angle - since we typically have only one theta value
+        θ_idx = 1
         
-        # Create 2D slice: p vs φ
-        slice_data = [ md.distribution[p, 1, phi] for phi in eachindex(md.φ), p in eachindex(md.p)]
+        # Create 2D slice: momentum magnitude vs azimuthal angle P(p, φ) at fixed θ
+        slice_data = md.distribution[:, θ_idx, :]  # Shape: (n_p, n_phi)
+        # Normalize the data
+        slice_data_norm = slice_data ./ maximum(slice_data)
         
-        ax = PolarAxis(fig[1, 1], 
-                 xlabel="Azimuthal Angle φ (radians)", 
-                 ylabel="Momentum p (a.u.)",
-                 title=isempty(title) ? "Momentum Distribution at θ = $(round(actual_θ * 180/π, digits=1))°" : title)
+        # Create polar plot
+        fig = Figure(size=(800, 800))
+        plot_title = isempty(title) ? "Momentum Distribution at θ = $(round(md.θ[θ_idx] * 180/π, digits=1))°, $(pulse_info)" : title
+        ax = PolarAxis(fig[1, 1], title=plot_title)
         
-        hm = surface!(ax, md.φ, md.p, zeros(size(dist)), color = slice_data, shading = NoShading, colormap = :coolwarm)
+        # For polar plots, we need to create a surface plot
+        # Create meshgrid for polar coordinates
+        φ_mesh = repeat(md.φ', length(md.p), 1)
+        p_mesh = repeat(md.p, 1, length(md.φ))
+        
+        # Use surface plot for polar coordinates
+        surface!(ax, φ_mesh, p_mesh, slice_data_norm, colormap=colormap, shading=NoShading)
         
         # Add colorbar
-        # Colorbar(fig[1, 2], hm, label="Probability Density")
-        Colorbar(f[2, 1], p, vertical = false, flipaxis = false, label="Probability Density")
+        Colorbar(fig[1, 2], colormap=colormap, colorrange=(0, 1), 
+                label="Normalized Probability Density")
         
-        # Set x-axis ticks in terms of π
-        ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
+        # # Set radial limits
+        # ax.rmax = maximum(md.p)
+        # ax.rmin = 0
         
     elseif slice_type == :phi_slice
         # Plot at fixed azimuthal angle
         φ_idx = argmin(abs.(md.φ .- slice_value))
         actual_φ = md.φ[φ_idx]
         
-        # Create 2D slice: p vs θ
-        slice_data = md.distribution[:, :, φ_idx]
-        
-        ax = Axis(fig[1, 1], 
-                 xlabel="Polar Angle θ (radians)", 
-                 ylabel="Momentum p (a.u.)",
-                 title=isempty(title) ? "Momentum Distribution at φ = $(round(actual_φ * 180/π, digits=1))°" : title)
-        
-        hm = heatmap!(ax, md.θ, md.p, slice_data, colormap=colormap)
-        
-        # Add colorbar
-        Colorbar(fig[1, 2], hm, label="Probability Density")
-        
-        # Set x-axis ticks in terms of π
-        ax.xticks = ([0, π/4, π/2, 3π/4, π], ["0", "π/4", "π/2", "3π/4", "π"])
+        if length(md.θ) > 1
+            # Create 2D slice: p vs θ
+            slice_data = md.distribution[:, :, φ_idx]
+            # Normalize the data
+            slice_data_norm = slice_data ./ maximum(slice_data)
+            
+            fig = Figure(size=(800, 600))
+            plot_title = isempty(title) ? "Momentum Distribution at φ = $(round(actual_φ * 180/π, digits=1))°, $(pulse_info)" : title
+            ax = Axis(fig[1, 1], 
+                     xlabel="Polar Angle θ (radians)", 
+                     ylabel="Momentum p (a.u.)",
+                     title=plot_title)
+            
+            hm = heatmap!(ax, md.θ, md.p, slice_data_norm, colormap=colormap)
+            Colorbar(fig[1, 2], hm, label="Normalized Probability Density")
+            ax.xticks = ([0, π/4, π/2, 3π/4, π], ["0", "π/4", "π/2", "3π/4", "π"])
+        else
+            # Single theta value - create 1D plot vs p
+            slice_data = md.distribution[:, 1, φ_idx]
+            # Normalize the data
+            slice_data_norm = slice_data ./ maximum(slice_data)
+            
+            fig = Figure(size=(800, 600))
+            plot_title = isempty(title) ? "Momentum Distribution at φ = $(round(actual_φ * 180/π, digits=1))°, θ = $(round(md.θ[1] * 180/π, digits=1))°, $(pulse_info)" : title
+            ax = Axis(fig[1, 1], 
+                     xlabel="Momentum p (a.u.)", 
+                     ylabel="Normalized Probability Density",
+                     title=plot_title)
+            
+            lines!(ax, md.p, slice_data_norm, linewidth=2, color=:blue)
+        end
         
     else
         throw(ArgumentError("slice_type must be :p_slice, :theta_slice, or :phi_slice"))
     end
     
-    # Add grid
-    ax.xgridvisible = true
-    ax.ygridvisible = true
+    # Add grid for non-polar plots
+    if slice_type != :theta_slice && hasfield(typeof(ax), :xgridvisible)
+        ax.xgridvisible = true
+        ax.ygridvisible = true
+    end
     
     # Save if path provided
     if !isempty(save_path)

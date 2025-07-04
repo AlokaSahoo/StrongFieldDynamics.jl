@@ -123,13 +123,13 @@ end
 #=============================================== From JAC ==========================================================#
 @doc raw"""
 
-    F1_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
+    F1_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
     
 Computes the pulse shape integral of the form:
 \mathcal{F}_1\left[\pm \omega ; f ; \mathbf{p}\right] = A_0 e^{\mp i \phi_{\text{CEP}}} \int_{-\infty}^{\infty} d\tau f(\tau) e^{-i(\varepsilon_i \pm \omega)\tau + i S_p(\tau)}, \\
 Returns the integration result of type `ComplexF64`.
 """
-function F1_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
+function F1_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
     wa = zero(ComplexF64)   
     np = pulse.np;   Tp = 2pi * np / pulse.ω
     omega = pulse.ω
@@ -196,13 +196,13 @@ end
 
 @doc raw"""
 
-    F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
+    F2_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
 
 Computes the pulse shape integral of the form:
 \mathcal{F}_2\left[f ; \mathbf{p}\right] &= \int_{-\infty}^{\infty} d\tau A^2(\tau) e^{-i \varepsilon_p \tau + i S_p(\tau)}
 Returns the integration result of type ComplexF64.
 """
-function F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
+function F2_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
 
     wa = zero(ComplexF64)   
     np = pulse.np;   Tp = 2pi * np / pulse.ω
@@ -220,7 +220,7 @@ function F2_integral_quad(pulse::Pulse, a_electron::AtomicElectron, p_electron::
     A0eps = pulse.A₀/sqrt(1.0 + epsilon^2)
     
     #Define Gauss-Legendre grid, convergence is typically good for orderGL = 100 * np (time consuming for np > 10); tested up to np = 20
-    if  np <= 10     orderGL = 200*np
+    if  np <= 10     orderGL = 500*np
     else             orderGL = 1000
     end
     tgrid, weights = QuadGK.gauss(orderGL,0.0,Tp)

@@ -1,6 +1,9 @@
 using AssociatedLegendrePolynomials
+using Distributed
 using Printf
+using ProgressMeter
 using SpecialFunctions
+using SphericalHarmonics
 using WignerSymbols
 
 export ClebschGordan, Ylm
@@ -219,16 +222,18 @@ Results from energy-resolved photoelectron spectrum calculation at fixed angles.
 - `ϕ::Float64`: Azimuthal angle (radians)
 - `energies::Vector{Float64}`: Energy grid (a.u.)
 - `spectrum::Vector{Float64}`: Differential ionization probability d²P/dΩdE
+- `pulse::Pulse`: Laser pulse
 """
 struct EnergyDistribution
     θ::Float64
     ϕ::Float64
     energies::Vector{Float64}
     spectrum::Vector{Float64}
+    pulse::Pulse
     
-    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, spectrum::Vector{Float64})
+    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, spectrum::Vector{Float64}, pulse::Pulse)
         length(energies) == length(spectrum) || throw(ArgumentError("energies and spectrum must have same length"))
-        new(θ, ϕ, energies, spectrum)
+        new(θ, ϕ, energies, spectrum, pulse)
     end
 end
 
@@ -243,17 +248,19 @@ Results from angle-resolved photoelectron distribution at fixed energy and theta
 - `θ::Float64`: Fixed polar angle (radians)
 - `ϕ::Vector{Float64}`: Azimuthal angle grid (radians)
 - `distribution::Vector{Float64}`: Angular distribution P(ϕ) at fixed θ
+- `pulse::Pulse`: Laser pulse
 """
 struct AngularDistribution
     energy::Float64
     θ::Float64
     ϕ::Vector{Float64}
     distribution::Vector{Float64}
+    pulse::Pulse
     
-    function AngularDistribution(energy::Float64, θ::Float64, ϕ::Vector{Float64}, distribution::Vector{Float64})
+    function AngularDistribution(energy::Float64, θ::Float64, ϕ::Vector{Float64}, distribution::Vector{Float64}, pulse::Pulse)
         length(distribution) == length(ϕ) || 
             throw(ArgumentError("distribution length must match length(ϕ)"))
-        new(energy, θ, ϕ, distribution)
+        new(energy, θ, ϕ, distribution, pulse)
     end
 end
 
@@ -268,17 +275,19 @@ Results from momentum-resolved photoelectron distribution calculation in spheric
 - `θ::Vector{Float64}`: Polar angle grid (radians, 0 to π)
 - `φ::Vector{Float64}`: Azimuthal angle grid (radians, 0 to 2π)
 - `distribution::Array{Float64,3}`: 3D momentum distribution P(p,θ,φ)
+- `pulse::Pulse`: Laser pulse
 """
 struct MomentumDistribution
     p::Vector{Float64}
     θ::Vector{Float64}
     φ::Vector{Float64}
     distribution::Array{Float64,3}
+    pulse::Pulse
     
-    function MomentumDistribution(p::Vector{Float64}, θ::Vector{Float64}, φ::Vector{Float64}, distribution::Array{Float64,3})
+    function MomentumDistribution(p::Vector{Float64}, θ::Vector{Float64}, φ::Vector{Float64}, distribution::Array{Float64,3}, pulse::Pulse)
         size(distribution) == (length(p), length(θ), length(φ)) || 
             throw(ArgumentError("distribution size must match momentum grid dimensions"))
-        new(p, θ, φ, distribution)
+        new(p, θ, φ, distribution, pulse)
     end
 end
 
@@ -309,16 +318,16 @@ function compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse;
     p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), :Bessel) for ep in energies]
 
     if coupled
-        Threads.@threads for i in eachindex(p_electrons)
+        @showprogress Threads.@threads for i in eachindex(p_electrons)
             distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
         end
     else
-        Threads.@threads for i in eachindex(p_electrons)
+        @showprogress Threads.@threads for i in eachindex(p_electrons)
             distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
         end
     end
     
-    return EnergyDistribution(θ, ϕ, energies, distribution)
+    return EnergyDistribution(θ, ϕ, energies, distribution, pulse)
 end
 
 
@@ -353,15 +362,15 @@ function compute_angular_distribution(a_electron::AtomicElectron,
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel)
 
     if coupled
-        Threads.@threads for i in eachindex(ϕs)
+        @showprogress Threads.@threads for i in eachindex(ϕs)
             distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
         end
     else
-        Threads.@threads for i in eachindex(ϕs)
+        @showprogress Threads.@threads for i in eachindex(ϕs)
             distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
         end
     end
-    return AngularDistribution(energy, θ, ϕs, distribution)
+    return AngularDistribution(energy, θ, ϕs, distribution, pulse)
 end
 
 
@@ -389,27 +398,41 @@ function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse;
     φs = range(0.0, 2π, length=n_phi) |> collect
     distribution = zeros(Float64, n_p, n_theta, n_phi)
 
+    local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
+
     p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel) for energy in energies ]
 
-    if coupled
-        Threads.@threads for i in eachindex(p_electrons)
+    if Distributed.nworkers() > 1
+        # Create a function for computing a single momentum point
+        compute_single_momentum = function(i)
+            p_electron = p_electrons[i]
+            row = zeros(Float64, n_theta, n_phi)
             for j in eachindex(θs)
                 for k in eachindex(φs)
-                    distribution[i, j, k] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], θs[j], φs[k])
+                    row[j, k] = local_probability_func(pulse, a_electron, p_electron, θs[j], φs[k])
+                end
+            end
+            return row
+        end
+        
+        # Use pmap to distribute computation
+        results = pmap(compute_single_momentum, 1:n_p)
+        
+        # Populate the distribution array from results
+        for i in 1:n_p
+            distribution[i, :, :] = results[i]
+        end
+    else    # Multithreading computation
+        Threads.@threads :dynamic for i in eachindex(p_electrons)
+            for j in eachindex(θs)
+                for k in eachindex(φs)
+                    distribution[i, j, k] = local_probability_func(pulse, a_electron, p_electrons[i], θs[j], φs[k])
                 end
             end
         end
-    else
-        Threads.@threads for i in eachindex(p_electrons)
-            for j in eachindex(θs)
-                for k in eachindex(φs)
-                    distribution[i, j, k] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electrons[i], θs[j], φs[k])
-                end
-            end
-        end        
     end
     
-    return MomentumDistribution(sqrt.(2*energies), θs, φs, distribution)
+    return MomentumDistribution(sqrt.(2*energies), θs, φs, distribution, pulse)
 end
 
 
@@ -435,15 +458,24 @@ Computes the Spherical hamonics using the Associated Legender Polynomials as
 """
 function Ylm(l, m, θ, ϕ)
     m = convert(Int64, m)
-    if abs(m) > l return zero(ComplexF64) end
-    if m ≥ 0
-        P = AssociatedLegendrePolynomials.legendre(LegendreSphereNorm(), l, m, cos(θ))
-        return P * exp(im * m * ϕ)
+    if l < 0 || abs(m) > l 
+        return zero(ComplexF64) 
     else
-        P = AssociatedLegendrePolynomials.legendre(LegendreSphereNorm(), l, -m, cos(θ))
-        return (-1)^m * conj(P * exp(im * (-m) * ϕ))
+        return SphericalHarmonics.sphericalharmonic(θ, ϕ, l, m)
     end
+
 end
+# function Ylm(l, m, θ, ϕ)
+#     m = convert(Int64, m)
+#     if abs(m) > l return zero(ComplexF64) end
+#     if m ≥ 0
+#         P = AssociatedLegendrePolynomials.legendre(LegendreSphereNorm(), l, m, cos(θ))
+#         return P * exp(im * m * ϕ)
+#     else
+#         P = AssociatedLegendrePolynomials.legendre(LegendreSphereNorm(), l, -m, cos(θ))
+#         return (-1)^m * conj(P * exp(im * (-m) * ϕ))
+#     end
+# end
 
 
 function Base.show(io::IO, p::Pulse)
