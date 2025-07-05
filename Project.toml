@@ -26,6 +26,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 [compat]
 ApproxFun = "0.13"
 AssociatedLegendrePolynomials = "1.0"
+BenchmarkTools = "1"
 CairoMakie = "0.13, 0.14"
 DelimitedFiles = "1.9"
 Dierckx = "0.5"
