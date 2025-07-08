@@ -24,12 +24,6 @@ using StrongFieldDynamics
 """
 module StrongFieldDynamics
 
-using Base.Threads: @threads
-using Distributed: pmap
-# using JenaAtomicCalculator
-using LinearAlgebra
-using QuasiArrays
-
 # Core type definitions and utility functions
 include("types-fucntions.jl")
 

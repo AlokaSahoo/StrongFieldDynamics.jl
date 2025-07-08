@@ -1,8 +1,9 @@
+using ApproxFun
+using LinearAlgebra
 using QuadGK
 
 export sin2Sv
 
-include("levin-integration.jl")
 
 """
     F1_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
@@ -42,6 +43,96 @@ function F2_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p
     return levin_integrate_approxfun(a2, gp, 0.0, pulse.Tp, ga, gb)
 end
 
+
+
+"""
+    sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+Computes the Volkov phase for a sin² pulse envelope at time `t`.
+"""
+function sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    term1 = p_electron.ε * t
+
+    integrand2(τ)  = pulse.f(τ) * ( cos(pulse.ω*τ + pulse.cep) * cos(ϕ) + pulse.helicity * pulse.ϵ * sin(pulse.ω*τ + pulse.cep) * sin(ϕ) )
+    int2, _ = quadgk(integrand2, 0, t, maxevals=1e5) 
+    term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2)
+
+    integrand3(τ)  = pulse.f(τ)^2 * ( cos(pulse.ω*τ + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*τ + pulse.cep)^2 )
+    int3, _ = quadgk(integrand3, 0, t, maxevals=1e5) 
+    term3 = int3 * (pulse.A₀)^2 / (1+pulse.ϵ^2) / 2.0
+
+    return term1 + term2 + term3
+
+end
+
+
+"""
+    sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+Computes the time derivative of the Volkov phase for a sin² pulse envelope at time `t`.
+"""
+function sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    term1 = p_electron.ε
+
+    term2 = ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2) ) * 
+            pulse.f(t) * ( cos(pulse.ω*t + pulse.cep) * cos(ϕ) + pulse.helicity*pulse.ϵ * sin(pulse.ω*t + pulse.cep) * sin(ϕ) )
+
+    term3 = ( (pulse.A₀^2) / (1+pulse.ϵ^2) / 2.0 ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
+
+    return term1 + term2 + term3
+
+end
+
+
+"""
+    levin_integrate_approxfun(f::Function, gp::Function, a::Float64, b::Float64, ga::Float64, gb::Float64)
+
+Compute the highly oscillatory integral ∫[a,b] f(x) exp(ig(x)) dx using Levin's method with ApproxFun.
+
+This implementation uses ApproxFun's automatic differentiation and adaptive function approximation
+to solve the differential equation ψ'(x) + ig'(x)ψ(x) = f(x) with ψ(a) = 0.
+
+Arguments:
+- f: amplitude function
+- gp: derivative of phase function g'(x)
+- a, b: integration bounds
+- ga, gb: g(a) and g(b) at the integration limits
+
+Returns:
+- ComplexF64: Levin integral approximation ψ(b)e^{ig(b)} - ψ(a)e^{ig(a)}
+"""
+function levin_integrate_approxfun(f::Function, gp::Function, a::Float64, b::Float64, ga::Float64, gb::Float64)
+    domain = a..b
+    space = Chebyshev(domain)
+    
+    # Create functions on the domain
+    F = Fun(f, space)
+    Gp = Fun(gp, space)
+    
+    # Set up the differential operator: d/dx + i*g'(x)
+    D = Derivative(space)
+    A = D + im * Gp
+    
+    # Could be controversial
+    # Solve the boundary value problem: A*ψ = F with ψ(a) = 0
+    # Using the constraint ψ(a) = 0
+    B = Evaluation(space, a)
+    psi = [B; A] \ [0; F]
+    
+    # println("psi(0) $(psi(0))")
+    
+    # Compute Levin integral
+    result = psi(b) * exp(im * gb) - psi(a) * exp(im * ga)
+    
+    return result
+
+end
+
+#=======================================================================================================================
+
+=======================================================================================================================#
 
 """
     F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
@@ -214,48 +305,6 @@ function F2_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::C
     wa = A0eps^2 * wa
     
     return( wa )
-end
-
-
-
-"""
-    sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-Computes the Volkov phase for a sin² pulse envelope at time `t`.
-"""
-function sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-    term1 = p_electron.ε * t
-
-    integrand2(τ)  = pulse.f(τ) * ( cos(pulse.ω*τ + pulse.cep) * cos(ϕ) + pulse.helicity * pulse.ϵ * sin(pulse.ω*τ + pulse.cep) * sin(ϕ) )
-    int2, _ = quadgk(integrand2, 0, t, maxevals=1e5) 
-    term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2)
-
-    integrand3(τ)  = pulse.f(τ)^2 * ( cos(pulse.ω*τ + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*τ + pulse.cep)^2 )
-    int3, _ = quadgk(integrand3, 0, t, maxevals=1e5) 
-    term3 = int3 * (pulse.A₀)^2 / (1+pulse.ϵ^2) / 2.0
-
-    return term1 + term2 + term3
-
-end
-
-
-"""
-    sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-Computes the time derivative of the Volkov phase for a sin² pulse envelope at time `t`.
-"""
-function sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-    term1 = p_electron.ε
-
-    term2 = ( pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2) ) * 
-            pulse.f(t) * ( cos(pulse.ω*t + pulse.cep) * cos(ϕ) + pulse.helicity*pulse.ϵ * sin(pulse.ω*t + pulse.cep) * sin(ϕ) )
-
-    term3 = ( (pulse.A₀^2) / (1+pulse.ϵ^2) / 2.0 ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
-
-    return term1 + term2 + term3
-
 end
 
 

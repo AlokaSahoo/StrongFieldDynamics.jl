@@ -1,6 +1,8 @@
-using Distributed
+using Base.Threads: @threads
+using Distributed: pmap
 using Printf
 using ProgressMeter
+using QuasiArrays
 using SpecialFunctions
 using SphericalHarmonics
 using WignerSymbols
@@ -30,7 +32,7 @@ All internal values are stored in atomic units.
 - `helicity::Int64`: Helicity (+1 or -1)
 - `ϵ::Float64`: Ellipticity parameter (0=linear, 1=circular)
 - `u::QuasiVector{Float64, Tuple{UnitRange{Int64}}}`: Polarization unit vector
-- `Sv::Function`: Vector potential function A(t)
+- `Sv::Function`: Volkov-phase function
 
 # Required Arguments
 - `I₀`: Peak intensity (can include units, e.g., 1e14u"W/cm^2", or numeric value assuming W/cm²)
@@ -42,7 +44,7 @@ All internal values are stored in atomic units.
 - `ϵ`: Ellipticity parameter (0=linear, 1=circular, default: 0.0)
 
 # Optional Arguments
-- `Sv`: Custom vector potential function A(t) (default: t->0.0)
+- `Sv`: Custom Volkov-phase function (default: t->0.0)
 """
 struct Pulse
     I₀::Float64

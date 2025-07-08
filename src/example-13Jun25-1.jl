@@ -9,7 +9,7 @@ nP(r, IP) = 2^2.5 * IP^1.5 * r * exp(-sqrt(2*IP)*r)
 aP = nP.(r, IP)
 a_electron = StrongFieldDynamics.AtomicElectron(36, 1, 0, 1//2, a_electron.ε, r, aP) ;
 
-ed = compute_energy_distribution(a_electron, pulse; energy_range=(1e-8, 10*pulse.ω), n_points=400, coupled=true)
+ed = compute_energy_distribution(a_electron, pulse; energy_range=(1e-8, 10*pulse.ω), n_points=400, coupled=true);
 StrongFieldDynamics.plot_energy_distribution(ed)
 
 # ad = compute_angular_distribution(a_electron, pulse; energy=4.5*pulse.ω, n_ϕ =200, θ = pi/2)
