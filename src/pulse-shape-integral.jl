@@ -44,45 +44,6 @@ end
 
 
 """
-    F1_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
-
-Computes the pulse shape integral of the form:
-Returns the integration result of type ComplexF64.
-"""
-function F1_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
-
-    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
-    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω)
-
-    ga = 0.0
-    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.Tp
-
-    res = levin_integrate(pulse.f, gp, 0.0, pulse.Tp, ga, gb, 100)
-
-    return pulse.A₀ * exp(-im * sign * pulse.cep) * res
-end
-
-
-"""
-    F2_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
-
-Computes the pulse shape integral of the form:
-Returns the integration result of type ComplexF64.
-"""
-function F2_integral_levin(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
-
-    a2(t) = ( pulse.A₀^2 / (1 + pulse.ϵ^2) ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
-    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
-    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
-
-    ga = 0.0        # for sin2 pulse
-    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.Tp
-
-    return levin_integrate(a2, gp, 0.0, pulse.Tp, ga, gb, 100)
-end
-
-
-"""
     F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
 
 
@@ -121,12 +82,9 @@ end
 
 
 #=============================================== From JAC ==========================================================#
-@doc raw"""
-
+"""
     F1_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
     
-Computes the pulse shape integral of the form:
-\mathcal{F}_1\left[\pm \omega ; f ; \mathbf{p}\right] = A_0 e^{\mp i \phi_{\text{CEP}}} \int_{-\infty}^{\infty} d\tau f(\tau) e^{-i(\varepsilon_i \pm \omega)\tau + i S_p(\tau)}, \\
 Returns the integration result of type `ComplexF64`.
 """
 function F1_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64 ; sign=1)
@@ -194,12 +152,9 @@ function F1_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::C
     return wa
 end
 
-@doc raw"""
-
+"""
     F2_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
 
-Computes the pulse shape integral of the form:
-\mathcal{F}_2\left[f ; \mathbf{p}\right] &= \int_{-\infty}^{\infty} d\tau A^2(\tau) e^{-i \varepsilon_p \tau + i S_p(\tau)}
 Returns the integration result of type ComplexF64.
 """
 function F2_integral_jac(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, thetap::Float64, phip::Float64)
@@ -266,7 +221,7 @@ end
 """
     sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-
+Computes the Volkov phase for a sin² pulse envelope at time `t`.
 """
 function sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
@@ -288,7 +243,7 @@ end
 """
     sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-
+Computes the time derivative of the Volkov phase for a sin² pulse envelope at time `t`.
 """
 function sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
@@ -307,7 +262,7 @@ end
 """
     sin2Sv(t::Float64, θ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
-Defines the Volkov phase integral over time for a sin² envelope. Only for circular polarization 
+Defines the Volkov phase integral over time for a sin² envelope. Only for circular polarization from the Birger PRA 2020.
 """
 function sin2Sv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
@@ -337,39 +292,39 @@ function sin2Sv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::
     return εp * t + f_tau
 end
 
-"""
-sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+# """
+# sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+# """
+# function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+#     # Phtotelectron energy
+#     εp = p_electron.ε
+#     # Laser pulse 
+#     ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
+#     # a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
+
+#     function sin2env(x) 
+#         if x < 0 || x >= pulse.Tp
+#             return 0.
+#         end
+#         sin(ω*x/2.0/np)^2
+#     end
+
+#     term1 = εp * t
+
+#     int2, _ = quadgk(τ -> sin2env(τ) * cos(ω*τ + ξ), 0, t, maxevals=10^5) 
+#     term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0)
+
+#     int3, _ = quadgk(τ -> (sin2env(τ))^2, 0, t, maxevals=10^5) 
+#     term3 = int3 * (pulse.A₀)^2 / 4.0
+
+#     return term1 + term2 + term3
+# end
+
 
 """
-function sin2Sv_quad(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-    # Phtotelectron energy
-    εp = p_electron.ε
-    # Laser pulse 
-    ω  = pulse.ω ;   Up = pulse.Up ;    np = pulse.np;     ξ  = pulse.cep - pulse.helicity * ϕ
-    # a  =  pulse.A₀ * p_electron.p * sin(θ) / (sqrt(2) * ω)
-
-    function sin2env(x) 
-        if x < 0 || x >= pulse.Tp
-            return 0.
-        end
-        sin(ω*x/2.0/np)^2
-    end
-
-    term1 = εp * t
-
-    int2, _ = quadgk(τ -> sin2env(τ) * cos(ω*τ + ξ), 0, t, maxevals=10^5) 
-    term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0)
-
-    int3, _ = quadgk(τ -> (sin2env(τ))^2, 0, t, maxevals=10^5) 
-    term3 = int3 * (pulse.A₀)^2 / 4.0
-
-    return term1 + term2 + term3
-end
-
-
-"""
-sin2Sv_quadgk(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+    sin2Sv_quadgk(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
 """
 function sin2Sv_quadgk(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.Pulse, p_electron::StrongFieldDynamics.ContinuumElectron)
@@ -433,6 +388,64 @@ function sin2Sv_prime_b(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_el
         return εp + term1 + term2 + term3 + a * sum_term
     end
 
+end
+
+
+"""
+    sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+
+"""
+function sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    # --- Convert Spherical Momentum to Cartesian ---
+    px = p_electron.p * sin(theta) * cos(phi)
+    py = p_electron.p * sin(theta) * sin(phi)
+    # The full squared magnitude of the momentum is simply p_electron.p^2
+    p_squared = p_electron.p^2
+
+    # Extract other parameters from the Pulse object
+    A₀ = pulse.A₀
+    ϵ = pulse.ϵ
+    λ_h = pulse.helicity
+    ω = pulse.ω
+    np = pulse.np
+    cep = pulse.cep
+
+    # --- Calculation based on Eq. A.16 ---
+    ω_vec = [ω * (1 - 1 / np), ω, ω * (1 + 1 / np)]
+    A_vec = [-0.25 * A₀, 0.5 * A₀, -0.25 * A₀]
+
+    # Term 1: Free-electron kinetic energy (uses the full p²) 
+    term1 = 0.5 * p_squared * t
+
+    # Term 2: Ponderomotive energy contribution
+    term2 = (t / 4.0) * sum(A_vec.^2)
+
+    # Term 3: Oscillatory diagonal term
+    term3_sum = sum((A_vec[i]^2 / (8.0 * ω_vec[i])) * sin(2.0 * ω_vec[i] * t + 2.0 * cep) for i in 1:3)
+    term3 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term3_sum
+
+    # Terms 4 & 5: Off-diagonal contributions
+    term4_sum = 0.0
+    term5_sum = 0.0
+    for i in 1:2
+        for j in (i+1):3
+            term4_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] - ω_vec[j]))) * sin((ω_vec[i] - ω_vec[j]) * t)
+            term5_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] + ω_vec[j]))) * sin((ω_vec[i] + ω_vec[j]) * t + 2.0 * cep)
+        end
+    end
+    term4 = term4_sum
+    term5 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term5_sum
+
+    # Terms 6 & 7: Momentum-field coupling terms (use pₓ and pᵧ) [cite: 95, 96]
+    term6 = (px / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * sin(ω_vec[i] * t + cep) for i in 1:3)
+    term7 = -ϵ * λ_h * (py / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * cos(ω_vec[i] * t + cep) for i in 1:3)
+
+    # Combine all terms for the final Volkov phase
+    S_p_t = term1 + term2 + term3 + term4 + term5 + term6 + term7
+
+    return S_p_t
 end
 
 

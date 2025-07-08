@@ -1,4 +1,3 @@
-using AssociatedLegendrePolynomials
 using Distributed
 using Printf
 using ProgressMeter
