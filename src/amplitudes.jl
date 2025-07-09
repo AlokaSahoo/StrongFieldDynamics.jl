@@ -42,7 +42,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     for lp in 0:lp_max
         for jp in abs(lp - 1//2):(lp + 1//2)
             # reduced matrix element
-            p_partialwave = StrongFieldDynamics.compute_partial_wave(lp, jp, p_electron, a_electron)
+            p_partialwave = compute_partial_wave(lp, jp, p_electron, a_electron)
             matrix_elem12 = reduced_matrix_element(p_partialwave, a_electron, r)
                 
             for q in -1:1

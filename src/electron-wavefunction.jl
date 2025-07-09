@@ -310,11 +310,13 @@ partial_wave = compute_partial_wave(1, 3//2, continuum, atom)
 function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron)
     P = zeros(Float64, length(a_electron.r))  ; δ = 0.0
 
-    if p_electron.solution == :Bessel
+    if p_electron.solution == Bessel
         r, P, δ = bessel_electron(p_electron.ε, l, a_electron.r)
-    elseif p_electron.solution == :Distorted
+    elseif p_electron.solution == Distorted
         # Note: rV needs to be defined in the calling scope or passed as parameter
         r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
+    else
+        @error "$(p_electron.solution) - not implemented yet"
     end
 
     return PartialWave(p_electron.ε, l, j, P, δ)

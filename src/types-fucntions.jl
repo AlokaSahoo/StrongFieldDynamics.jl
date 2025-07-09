@@ -156,14 +156,15 @@ end
 
 Defines a continuum (photo) electron for a particular energy.
 
-`ε::Float64`
-`p::Float64`
-`solution::Symbol`
+# Fields
+- `ε::Float64`
+- `p::Float64`
+- `solution::ContinuumSolution`
 """
 struct ContinuumElectron
     ε::Float64
     p::Float64
-    solution::Symbol
+    solution::ContinuumSolution
 end
 
 
@@ -316,7 +317,7 @@ function compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse;
     energies = range(energy_range[1], energy_range[2], length=n_points) |> collect
     distribution = zeros(Float64, n_points)
     
-    p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), :Bessel) for ep in energies]
+    p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), Bessel) for ep in energies]
 
     if coupled
         @showprogress Threads.@threads for i in eachindex(p_electrons)
@@ -360,7 +361,7 @@ function compute_angular_distribution(a_electron::AtomicElectron,
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect
     distribution = zeros(Float64, n_ϕ)
     
-    p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel)
+    p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel)
 
     if coupled
         @showprogress Threads.@threads for i in eachindex(ϕs)
@@ -401,7 +402,7 @@ function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse;
 
     local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
 
-    p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), :Bessel) for energy in energies ]
+    p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel) for energy in energies ]
 
     if Distributed.nworkers() > 1
         # Create a function for computing a single momentum point
