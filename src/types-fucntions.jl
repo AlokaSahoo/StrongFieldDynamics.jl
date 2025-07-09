@@ -9,6 +9,7 @@ using WignerSymbols
 
 export ClebschGordan, Ylm
 export Pulse, AtomicElectron, ContinuumElectron, ContinuumSolution, PartialWave
+export Bessel, Distorted
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
 
@@ -140,13 +141,27 @@ end
 """
     ContinuumSolution
 
-Bessel      -> ...
-Coulomb     -> ...
-Distorted   -> ...
+Enumeration of different approximations for the continuum electron wavefunction in strong-field ionization calculations.
+
+# Variants
+- `Bessel`
+- `Distorted`
+
+## `Bessel`
+**Volkov states** - Free electron wavefunction in an oscillating electric field.
+
+## `Distorted`
+**Distorted waves** - Numerical solution including both Coulomb and laser field effects.
+
+# Usage
+```julia
+# Create continuum electrons with different wavefunctions
+bessel_electron = ContinuumElectron(1.0, sqrt(2.0), Bessel)       # SFA calculation
+distorted_electron = ContinuumElectron(1.0, sqrt(2.0), Distorted) # Full calculation
+```
 """
 @enum ContinuumSolution begin
     Bessel
-    Coulomb
     Distorted
 end
 
@@ -217,25 +232,25 @@ end
 """
     EnergyDistribution
 
-Results from energy-resolved photoelectron spectrum calculation at fixed angles.
+Results from energy-resolved photoelectron distribution calculation at fixed angles.
 
 # Fields
 - `θ::Float64`: Polar angle (radians)
 - `ϕ::Float64`: Azimuthal angle (radians)
 - `energies::Vector{Float64}`: Energy grid (a.u.)
-- `spectrum::Vector{Float64}`: Differential ionization probability d²P/dΩdE
+- `distribution::Vector{Float64}`: Differential ionization probability d²P/dΩdE
 - `pulse::Pulse`: Laser pulse
 """
 struct EnergyDistribution
     θ::Float64
     ϕ::Float64
     energies::Vector{Float64}
-    spectrum::Vector{Float64}
+    distribution::Vector{Float64}
     pulse::Pulse
     
-    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, spectrum::Vector{Float64}, pulse::Pulse)
-        length(energies) == length(spectrum) || throw(ArgumentError("energies and spectrum must have same length"))
-        new(θ, ϕ, energies, spectrum, pulse)
+    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, distribution::Vector{Float64}, pulse::Pulse)
+        length(energies) == length(distribution) || throw(ArgumentError("energies and distribution must have same length"))
+        new(θ, ϕ, energies, distribution, pulse)
     end
 end
 

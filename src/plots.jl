@@ -34,8 +34,8 @@ function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; ti
     end
     ax.title = plot_title
     
-    # Plot the energy spectrum
-    lines!(ax, ed.energies, ed.spectrum, linewidth=2, color=:blue, label="Photoelectron Spectrum")
+    # Plot the energy distribution
+    lines!(ax, ed.energies, ed.distribution, linewidth=2, color=:blue, label="Photoelectron Distribution")
     
     # Add grid and formatting
     ax.xgridvisible = true
@@ -44,8 +44,8 @@ function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; ti
     ax.yminorgridvisible = true
     
     # Set axis limits with some padding
-    if !isempty(ed.spectrum) && maximum(ed.spectrum) > 0
-        ylims!(ax, 0, maximum(ed.spectrum) * 1.1)
+    if !isempty(ed.distribution) && maximum(ed.distribution) > 0
+        ylims!(ax, 0, maximum(ed.distribution) * 1.1)
     end
     xlims!(ax, minimum(ed.energies), maximum(ed.energies))
     
