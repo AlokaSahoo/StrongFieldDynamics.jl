@@ -2,7 +2,7 @@ using Base.Threads: @threads
 using Distributed: pmap
 using Printf
 using ProgressMeter
-using QuasiArrays
+using OffsetArrays
 using SpecialFunctions
 using SphericalHarmonics
 using WignerSymbols
@@ -31,7 +31,7 @@ All internal values are stored in atomic units.
 - `cep::Float64`: Carrier-envelope phase (radians)
 - `helicity::Int64`: Helicity (+1 or -1)
 - `ϵ::Float64`: Ellipticity parameter (0=linear, 1=circular)
-- `u::QuasiVector{Float64, Tuple{UnitRange{Int64}}}`: Polarization unit vector
+- `u::OffsetVector{Float64, Vector{Float64}}`: Polarization unit vector
 - `Sv::Function`: Volkov-phase function
 
 # Required Arguments
@@ -58,7 +58,7 @@ struct Pulse
     cep::Float64
     helicity::Int64
     ϵ::Float64
-    u::QuasiVector{Float64, Tuple{UnitRange{Int64}}}
+    u::OffsetVector{Float64, Vector{Float64}}
     Sv::Function
     
     # Inner constructor for unit conversion - now only accepts keyword arguments
@@ -130,7 +130,7 @@ struct Pulse
         up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
         u0 = 0.0
         um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
-        u = QuasiVector([um, u0, up], -1:1)
+        u = OffsetVector([um, u0, up], -1:1)
 
         new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv)
     end

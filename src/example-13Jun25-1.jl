@@ -27,7 +27,7 @@ StrongFieldDynamics.plot_angular_distribution(ad)
                 Momentum Distrbution
 -----------------------------------------------------------------------------------------------=#
 
-pulse = StrongFieldDynamics.Pulse(I₀ = 1.5e14, λ=800, cycles=10, cep=float(pi), helicity=1, ϵ=1.0)
+pulse = StrongFieldDynamics.Pulse(I₀ = 1.5e14, λ=800, cycles=10, cep=float(0.), helicity=1, ϵ=1.0)
 
 a_electron = StrongFieldDynamics.compute_atomic_electron(36, 4, 1) ;
 r  = a_electron.r
