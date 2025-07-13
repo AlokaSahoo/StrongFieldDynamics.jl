@@ -13,7 +13,6 @@ pre-computed atomic data files for accurate bound state representations.
 """
 
 using Dierckx
-# using OrdinaryDiffEq: ODEProblem, solve, Vern9, Tsit5
 using SpecialFunctions
 using DelimitedFiles
 
@@ -65,76 +64,49 @@ ar_3p = compute_atomic_electron(18, 3, 1)
 - Data files contain radial positions and corresponding wavefunction values
 - Interpolation is performed to ensure smooth wavefunction representation
 """
-function compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
-    if     (Z == 3 && n == 2 && l == 0)         # Lithium 2s ionization
+function compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64=0.0)
+
+    hydrogenic(r, IP) = 2^2.5 * IP^1.5 * r * exp(-sqrt(2*IP)*r)
+
+    if     (Z == 3)         # Lithium 2s ionization
+        n = 2 ; l = 0 ;
         j = 1//2    ;  
         if ip == 0.0  ip = 5.3917/27.21138 end  # Default IP: 5.3917 eV
 
         data = readdlm(dir * "/../deps/Li-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,4]  # r in bohr, P(r) radial wavefunction
 
-    elseif (Z == 3 && n == 1 && l == 0)         # Lithium 1s ionization (hydrogenic-like)
-        j = 1//2    ;  
-        if ip == 0.0  ip = 5.3917/27.21138 end
-
-        data = readdlm(dir * "/../deps/Li-III.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,2]
-
-    elseif (Z == 10 && n == 2 && l == 1)        # Neon 2p+ ionization
+    elseif (Z == 10)        # Neon 2p+ ionization
+        n = 2 ; l = 1 ;
         j = 3//2    ;  
         if ip == 0.0  ip = 21.5645/27.21138 end  # Default IP: 21.5645 eV
 
         data = readdlm(dir * "/../deps/Ne-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,8]
 
-    elseif (Z == 10 && n == 1 && l == 0)        # Neon 1s ionization (hydrogenic-like)
-        j = 1//2    ;  
-        if ip == 0.0  ip = 21.5645/27.21138 end
-
-        data = readdlm(dir * "/../deps/Ne-X.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,2]
-
-    elseif (Z == 18 && n == 3 && l == 1)        # Argon 3p+ ionization
+    elseif (Z == 18)        # Argon 3p+ ionization
+        n = 3 ; l = 1 ;
         j = 3//2    ;  
         if ip == 0.0  ip = 15.7596/27.21138 end  # Default IP: 15.7596 eV
 
         data = readdlm(dir * "/../deps/Ar-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,14]
 
-    elseif (Z == 18 && n == 1 && l == 0)        # Argon 1s ionization (hydrogenic-like)
-        j = 1//2    ;  
-        if ip == 0.0  ip = 15.7596/27.21138 end
-
-        data = readdlm(dir * "/../deps/Ar-XVIII.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,2]
-
-    elseif (Z == 36 && n == 4 && l == 1)        # Krypton 4p+ ionization
+    elseif (Z == 36)        # Krypton 4p+ ionization
+        n = 4 ; l = 1 ;
         j = 3//2    ;  
         if ip == 0.0  ip = 13.9996/27.21138 end  # Default IP: 13.9996 eV
 
         data = readdlm(dir * "/../deps/Kr-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,24]
 
-    elseif (Z == 36 && n == 1 && l == 0)        # Krypton 1s ionization (hydrogenic-like)
-        j = 1//2    ;  
-        if ip == 0.0  ip = 13.9996/27.21138 end
-
-        data = readdlm(dir * "/../deps/Kr-XXXVI.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,2]           
-
-    elseif (Z == 54 && n == 5 && l == 1)        # Xenon 4p+ ionization
+    elseif (Z == 54)        # Xenon 5p+ ionization
+        n = 5 ; l = 1 ;
         j = 3//2    ;  
         if ip == 0.0  ip = 12.1298/27.21138 end  # Default IP: 12.1298 eV
 
         data = readdlm(dir * "/../deps/Xe-I.dat", skipstart = 2)
         r_, P_ = data[:,1], data[:,34]
-
-    elseif (Z == 54 && n == 1 && l == 0)        # Xenon 1s ionization (hydrogenic-like)
-        j = 1//2    ;  
-        if ip == 0.0  ip = 12.1298/27.21138 end
-
-        data = readdlm(dir * "/../deps/Xe-LIV.dat", skipstart = 2)
-        r_, P_ = data[:,1], data[:,2]
 
     else
         error("Bound-state electron wavefunction not found for Z=$Z, n=$n, l=$l. " *
@@ -143,10 +115,47 @@ function compute_atomic_electron(Z::Int64, n::Int64, l::Int64 ; ip::Float64=0.0)
     end
 
     # Interpolate the wavefunction data for smooth representation
-    itp = Dierckx.Spline1D(r_, P_)
-    P = itp.(r_)
+    if scheme == Atomic
+        itp = Dierckx.Spline1D(r_, P_)
+        P = itp.(r_)
+
+    elseif scheme == Hydrogenic
+        n = 1 ; l = 0 ;
+        j  = 1//2 ;
+        P = hydrogenic.(r_, ip)
+    end
 
     return AtomicElectron(Z, n, l, j, (-ip), r_, P)
+end
+
+
+
+function compute_potential(a_electron::AtomicElectron)
+    if a_electron.Z == 3
+        data = readdlm(dir * "/../deps/Li-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    elseif a_electron.Z == 10
+        data = readdlm(dir * "/../deps/Ne-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    elseif a_electron.Z == 18
+        data = readdlm(dir * "/../deps/Ar-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    elseif a_electron.Z == 36
+        data = readdlm(dir * "/../deps/Kr-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    elseif a_electron.Z == 54
+        data = readdlm(dir * "/../deps/Xe-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    else
+        error("Supported combinations: Li(Z=3); Ne(Z=10); " *
+              "Ar(Z=18); Kr(Z=36); Xe(Z=54)")
+    end
+
+    # Interpolating to the radial grid
+    itp = Dierckx.Spline1D(r_, rV_)
+    rV = itp.(a_electron.r)
+
+    return rV
 end
 
 
@@ -314,6 +323,7 @@ function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::Continuu
         r, P, δ = bessel_electron(p_electron.ε, l, a_electron.r)
     elseif p_electron.solution == Distorted
         # Note: rV needs to be defined in the calling scope or passed as parameter
+        rV = compute_potential(a_electron)
         r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
     else
         @error "$(p_electron.solution) - not implemented yet"

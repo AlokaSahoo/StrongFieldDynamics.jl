@@ -29,13 +29,9 @@ using Test
     @testset "Physical Calculations" begin
         # TODO: Add tests for SFA calculations, photoionization, etc.
 
-        a_electron = StrongFieldDynamics.compute_atomic_electron(36, 4, 1) ;
-        r  = a_electron.r ;
-        IP = -a_electron.ε ;  #14/27.21138 #eV
-        nP(r, IP) = 2^2.5 * IP^1.5 * r * exp(-sqrt(2*IP)*r)
-        aP = nP.(r, IP) ;
-        a_electron = StrongFieldDynamics.AtomicElectron(36, 1, 0, 1//2, a_electron.ε, r, aP) ;
+        settings = Settings()
 
+        a_electron = StrongFieldDynamics.compute_atomic_electron(36, settings.IonizationScheme) ;
         p_electron = StrongFieldDynamics.ContinuumElectron(0.5, sqrt(2*0.5), Bessel) ;
 
         @testset "Volkov Phase Circular" begin
@@ -62,7 +58,7 @@ using Test
 
         @testset "Distributions" begin
             pulse = StrongFieldDynamics.Pulse(I₀ = 5e13, λ=800, cycles=2, cep=float(pi), helicity=1, ϵ=1.0)
-            @test isapprox(compute_energy_distribution(a_electron, pulse; energy_range=(5*pulse.ω, 5*pulse.ω), n_points=1, coupled=true).distribution[1], 7.345370827208923e-7, rtol=1e-4 )
+            @test isapprox(compute_energy_distribution(a_electron, pulse; energy_range=(5*pulse.ω, 5*pulse.ω), n_points=1).distribution[1], 7.345370827208923e-7, rtol=1e-4 )
         end
 
     end

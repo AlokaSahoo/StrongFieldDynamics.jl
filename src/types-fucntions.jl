@@ -8,8 +8,10 @@ using SphericalHarmonics
 using WignerSymbols
 
 export ClebschGordan, Ylm
-export Pulse, AtomicElectron, ContinuumElectron, ContinuumSolution, PartialWave
-export Bessel, Distorted
+export Pulse, AtomicElectron, ContinuumElectron, PartialWave, Settings
+export ContinuumSolution, Bessel, Distorted
+export Gauge, VelocityGauge, LengthGauge
+export IonizationScheme, Hydrogenic, Atomic
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
 
@@ -165,6 +167,47 @@ distorted_electron = ContinuumElectron(1.0, sqrt(2.0), Distorted) # Full calcula
     Distorted
 end
 
+"""
+    IonizationScheme
+
+Enumeration of different approaches for modeling the initial bound state in strong-field ionization.
+
+# Variants
+- `Hydrogenic`: Hydrogen-like wavefunctions with effective nuclear charge
+- `Atomic`: Full atomic structure calculation (Hartree-Fock or DFT)
+
+# Usage
+```julia
+# Different ionization schemes
+hydrogenic_calc = Settings(pulse, 1; ionization_scheme=Hydrogenic)
+atomic_calc = Settings(pulse, 18; ionization_scheme=Atomic)
+```
+"""
+@enum IonizationScheme begin
+    Hydrogenic
+    Atomic
+end
+
+"""
+    Gauge
+
+Enumeration of different gauge choices for the electromagnetic field in strong-field calculations.
+
+# Variants
+- `LengthGauge`: Length gauge (minimal coupling A·p)
+- `VelocityGauge`: Velocity gauge (electric field E·r)
+
+# Usage
+```julia
+# Different gauge choices
+length_calc = Settings(pulse, 1; gauge=LengthGauge)
+velocity_calc = Settings(pulse, 1; gauge=VelocityGauge)
+```
+"""
+@enum Gauge begin
+    LengthGauge
+    VelocityGauge
+end
 
 """
     ContinuumElectron
@@ -310,38 +353,44 @@ end
 
 
 """
-    compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse; θ::Real=pi/2, ϕ::Real=0.0,
-                               energy_range::Tuple{Float64,Float64}=(1e-6, 0.5), n_points::Int64=200, coupled::Bool=true) -> EnergyDistribution
+    compute_energy_distribution(Z::Int64, pulse::Pulse; settings=Settings(), θ::Real=pi/2, ϕ::Real=0.0,
+                               energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_points::Int64=200) -> EnergyDistribution
 
 Computes the energy-resolved photoelectron spectrum at specified angles using SFA.
 
 # Arguments
-- `a_electron::AtomicElectron`: Initial bound state
+- `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
+- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `θ::Real=π/2`: Polar detection angle (radians)
 - `ϕ::Real=0.0`: Azimuthal detection angle (radians)
 - `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
 - `n_points::Int64=200`: Number of energy points
+
+# Returns
+- `EnergyDistribution`: Structure containing energies, spectrum, and pulse parameters
+
+# Example
+```julia
+pulse = Pulse(I₀=1e14, λ=800, cycles=8)
+ed = compute_energy_distribution(18, pulse; energy_range=(0.0, 2.0), n_points=500)
+```
 """
-function compute_energy_distribution(a_electron::AtomicElectron, pulse::Pulse; 
+function compute_energy_distribution(Z::Int64, pulse::Pulse;
+                                    settings=Settings(), 
                                     θ::Real=pi/2, ϕ::Real=0.0,
                                     energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
-                                    n_points::Int64=200,
-                                    coupled::Bool=true)
+                                    n_points::Int64=200)
 
     energies = range(energy_range[1], energy_range[2], length=n_points) |> collect
     distribution = zeros(Float64, n_points)
     
-    p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), Bessel) for ep in energies]
+    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
 
-    if coupled
-        @showprogress Threads.@threads for i in eachindex(p_electrons)
-            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
-        end
-    else
-        @showprogress Threads.@threads for i in eachindex(p_electrons)
-            distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
-        end
+    p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), settings.continuum_solution) for ep in energies]
+    
+    @showprogress Threads.@threads for i in eachindex(p_electrons)
+        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
     end
     
     return EnergyDistribution(θ, ϕ, energies, distribution, pulse)
@@ -349,66 +398,84 @@ end
 
 
 """
-    compute_angular_distribution(electron::ContinuumElectron, bound::AtomicElectron,
-                                pulse::Pulse; energy::Float64=1.0,
-                                θ::Float64=0.0,
-                                ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
-                                n_ϕ::Int=100,
-                                coupled::Bool=true) -> AngularDistribution
+    compute_angular_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy::Float64=1.0,
+                                θ::Real=pi/2, ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200) -> AngularDistribution
 
-Computes the angular distribution of photoelectrons at fixed energy and theta using SFA.
+Computes the angular distribution of photoelectrons at fixed energy and polar angle using SFA.
 
 # Arguments
-- `a_electron::AtomicElectron`: Initial bound state
+- `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
+- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `energy::Float64=1.0`: Fixed photoelectron energy (a.u.)
-- `θ::Real=pi/2`: Fixed polar angle (radians)
+- `θ::Real=π/2`: Fixed polar angle (radians)
 - `ϕ_range::Tuple{Float64,Float64}=(0.0, 2π)`: Azimuthal angle range (radians)
 - `n_ϕ::Int=200`: Number of azimuthal angle points
+
+# Returns
+- `AngularDistribution`: Structure containing angles, distribution, and pulse parameters
+
+# Example
+```julia
+pulse = Pulse(I₀=5e13, λ=800, cycles=6, ϵ=0.5)
+ad = compute_angular_distribution(36, pulse; energy=2.0, n_ϕ=360)
+```
 """
-function compute_angular_distribution(a_electron::AtomicElectron,
-                                     pulse::Pulse; energy::Float64=1.0,
+function compute_angular_distribution(Z::Int64, pulse::Pulse;
+                                     settings=Settings(),
+                                     energy::Float64=1.0,
                                      θ::Real=pi/2,
                                      ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
-                                     n_ϕ::Int=200,
-                                     coupled::Bool=true)
+                                     n_ϕ::Int=200)
     
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect
     distribution = zeros(Float64, n_ϕ)
+
+    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
     
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel)
 
-    if coupled
-        @showprogress Threads.@threads for i in eachindex(ϕs)
-            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
-        end
-    else
-        @showprogress Threads.@threads for i in eachindex(ϕs)
-            distribution[i] = StrongFieldDynamics.probability_uncoupled(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
-        end
+    @showprogress Threads.@threads for i in eachindex(ϕs)
+        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
     end
+
     return AngularDistribution(energy, θ, ϕs, distribution, pulse)
 end
 
 
 """
-    compute_momentum_distribution(electron::ContinuumElectron, bound::AtomicElectron,
-                                 pulse::Pulse; p_max::Float64=2.0,
-                                 n_p::Int=50, n_θ::Int=25, n_φ::Int=50) -> MomentumDistribution
+    compute_momentum_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
+                                 n_p::Int=50, n_theta::Int=1, n_phi::Int=50, coupled::Bool=true) -> MomentumDistribution
 
 Computes the 3D momentum distribution of photoelectrons using SFA in spherical coordinates.
 
 # Arguments
-- `a_electron::AtomicElectron`: Initial bound state
+- `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
+- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
 - `n_p::Int=50`: Number of momentum magnitude points
-- `n_θ::Int=1`: Number of polar angle points
-- `n_φ::Int=50`: Number of azimuthal angle points
+- `n_theta::Int=1`: Number of polar angle points (typically 1 for θ=π/2)
+- `n_phi::Int=50`: Number of azimuthal angle points
+
+# Returns
+- `MomentumDistribution`: Structure containing momentum grids, 3D distribution, and pulse parameters
+
+# Example
+```julia
+pulse = Pulse(I₀=2e14, λ=800, cycles=4, helicity=-1)
+md = compute_momentum_distribution(54, pulse; energy_range=(0.0, 5.0), n_p=100, n_phi=200)
+```
+
+# Notes
+- For typical SFA calculations, `n_theta=1` with θ=π/2 is sufficient
+- Higher `n_phi` values provide better angular resolution
+- `coupled=true` includes interchannel coupling effects
 """
-function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse; 
+function compute_momentum_distribution(Z::Int64, pulse::Pulse;
+                                      settings=Settings(), 
                                       energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
-                                      n_theta::Int=1, n_phi::Int=50, coupled::Bool=true)
+                                      n_theta::Int=1, n_phi::Int=50)
     energies = range(energy_range[1], energy_range[2], length=n_p) |> collect
     # θ = range(0.0, π, length=n_theta) |> collect
     θs = [float(pi/2)] |> collect
@@ -416,6 +483,8 @@ function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse;
     distribution = zeros(Float64, n_p, n_theta, n_phi)
 
     local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
+
+    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
 
     p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel) for energy in energies ]
 
@@ -450,6 +519,50 @@ function compute_momentum_distribution(a_electron::AtomicElectron, pulse::Pulse;
     end
     
     return MomentumDistribution(sqrt.(2*energies), θs, φs, distribution, pulse)
+end
+
+
+"""
+    Settings
+
+Configuration settings for strong-field ionization calculations.
+
+# Fields
+- `ionization_scheme::IonizationScheme`: Method for bound state calculation
+- `continuum_solution::ContinuumSolution`: Continuum electron wavefunction approximation
+- `gauge::Gauge`: Electromagnetic gauge choice
+
+# Constructors
+```julia
+# Basic constructor with defaults
+settings = Settings(pulse, 1)
+
+# With specific options
+settings = Settings(pulse, 18; 
+                   ionization_scheme=Atomic,
+                   continuum_solution=Distorted,
+                   gauge=VelocityGauge)
+```
+
+# Validation
+- Atomic number must be positive
+"""
+struct Settings
+    ionization_scheme::IonizationScheme
+    continuum_solution::ContinuumSolution
+    gauge::Gauge
+
+    function Settings(;ionization_scheme::IonizationScheme=Hydrogenic,
+                     continuum_solution::ContinuumSolution=Bessel,
+                     gauge::Gauge=VelocityGauge)
+        
+        # Warning and Error
+        if gauge == LengthGauge
+            throw(ArgumentError("LengthGauge computations are not implemented yet!!!"))
+        end
+
+        new(ionization_scheme, continuum_solution, gauge)
+    end
 end
 
 
@@ -495,6 +608,7 @@ end
 # end
 
 
+# # Add display method for Pulse
 function Base.show(io::IO, p::Pulse)
     # Convert atomic units back to conventional units for display
     λ_nm = p.λ * (5.29177210544e-11) * 1e9
@@ -655,3 +769,57 @@ function Base.show(io::IO, p::Pulse)
     
     println(io, "\033[96m╰" * "─"^(box_width-2) * "╯\033[0m")
 end
+
+
+# # Add display method for Settings
+# function Base.show(io::IO, settings::Settings)
+    
+#     scheme_name = if settings.ionization_scheme == Hydrogenic
+#         "Hydrogenic"
+#     elseif settings.ionization_scheme == Atomic
+#         "Atomic"
+#     else
+#         "Unknown Scheme"
+#     end
+
+#     gauge_name = if settings.gauge == LengthGauge
+#         "Length Gauge"
+#     elseif settings.gauge == VelocityGauge
+#         "Velocity Gauge"
+#     else
+#         "Unknown Gauge"
+#     end
+
+#     # Format parameters
+#     atom_name = if settings.atom <= 118
+#         elements = ["He", "Li", "Ne", "Ar", "Kr", "Xe"]
+#         if settings.atom <= length(elements)
+#             elements[settings.atom]
+#         else
+#             "Element"
+#         end
+#     else
+#         "Unknown"
+#     end
+
+#     println(io, "\033[96m╭────────────────────────────────────────────────────────────╮\033[0m")
+#     println(io, "\033[96m│\033[0m                   \033[1m\033[93mCALCULATION SETTINGS\033[0m                   \033[96m│\033[0m")
+#     println(io, "\033[96m├────────────────────────────────────────────────────────────┤\033[0m")
+    
+#     params = [
+#         ("Atom", "\033[91m$(atom_name)\033[0m (Z = \033[91m$(settings.atom)\033[0m)"),
+#         ("Ionization Scheme", "\033[92m$(scheme_name)\033[0m"),
+#         ("Continuum Solution", "\033[92m$(settings.continuum_solution)\033[0m"),
+#         ("Gauge Choice", "\033[92m$(gauge_name)\033[0m")
+#     ]
+    
+#     for (label, value) in params
+#         content = "  \033[1m$(label):\033[0m $(value)"
+#         content_clean = replace(content, r"\033\[[0-9;]*m" => "")
+#         padding = 62 - length(content_clean)
+#         padding_spaces = " "^max(0, padding)
+#         println(io, "\033[96m│\033[0m$(content)$(padding_spaces) \033[96m│\033[0m")
+#     end
+    
+#     println(io, "\033[96m╰────────────────────────────────────────────────────────────╯\033[0m")
+# end
