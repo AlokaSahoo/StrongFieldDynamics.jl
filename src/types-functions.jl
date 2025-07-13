@@ -433,7 +433,7 @@ function compute_angular_distribution(Z::Int64, pulse::Pulse;
 
     a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
     
-    p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel)
+    p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution)
 
     @showprogress Threads.@threads for i in eachindex(ϕs)
         distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
@@ -486,7 +486,7 @@ function compute_momentum_distribution(Z::Int64, pulse::Pulse;
 
     a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
 
-    p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), Bessel) for energy in energies ]
+    p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution) for energy in energies ]
 
     if Distributed.nworkers() > 1
         # Create a function for computing a single momentum point

@@ -25,7 +25,7 @@ using StrongFieldDynamics
 module StrongFieldDynamics
 
 # Core type definitions and utility functions
-include("types-fucntions.jl")
+include("types-functions.jl")
 
 # Amplitude calculations for strong field processes
 include("amplitudes.jl")

@@ -31,8 +31,8 @@ using Test
 
         settings = Settings()
 
-        a_electron = StrongFieldDynamics.compute_atomic_electron(36, settings.IonizationScheme) ;
-        p_electron = StrongFieldDynamics.ContinuumElectron(0.5, sqrt(2*0.5), Bessel) ;
+        a_electron = StrongFieldDynamics.compute_atomic_electron(36, settings.ionization_scheme) ;
+        p_electron = StrongFieldDynamics.ContinuumElectron(0.5, sqrt(2*0.5), settings.continuum_solution) ;
 
         @testset "Volkov Phase Circular" begin
             @testset "Circular" begin
