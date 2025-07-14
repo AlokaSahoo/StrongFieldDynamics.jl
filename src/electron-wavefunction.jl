@@ -129,7 +129,70 @@ function compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64
 end
 
 
+"""
+    compute_potential(a_electron::AtomicElectron) → Vector{Float64}
 
+Computes the effective ionic potential for continuum electron calculations.
+
+# Arguments
+- `a_electron::AtomicElectron`: Atomic electron structure containing atomic number and radial grid
+
+# Returns
+- `Vector{Float64}`: Effective potential V(r) values on the atomic electron's radial grid (atomic units)
+
+# Physics
+The function loads pre-computed effective ionic potentials that represent the interaction 
+between a continuum electron and the remaining ion after photoionization. 
+The effective potential has the asymptotic behavior:
+```
+V(r) → -Z_eff/r    as r → ∞
+```
+where Z_eff is the effective ionic charge seen by the continuum electron.
+
+# Supported Atoms
+- **Lithium (Z=3)**: Li⁺ ion potential for Li → Li⁺ + e⁻ ionization
+- **Neon (Z=10)**: Ne⁺ ion potential for Ne → Ne⁺ + e⁻ ionization
+- **Argon (Z=18)**: Ar⁺ ion potential for Ar → Ar⁺ + e⁻ ionization
+- **Krypton (Z=36)**: Kr⁺ ion potential for Kr → Kr⁺ + e⁻ ionization
+- **Xenon (Z=54)**: Xe⁺ ion potential for Xe → Xe⁺ + e⁻ ionization
+
+# Usage
+```julia
+# Compute atomic electron wavefunction
+atom = compute_atomic_electron(18, Atomic)  # Ar 3p electron
+
+# Get the corresponding ionic potential
+V_ion = compute_potential(atom)
+
+# Use for distorted wave calculations
+energy = 1.0  # 1 Hartree
+l = 1         # p-wave
+r, P, δ = distorted_electron(energy, l, atom.r, V_ion)
+```
+
+# Data Source
+Potentials are loaded from pre-computed data files:
+- `Li-II-rV.dat`: Li⁺ ionic potential
+- `Ne-II-rV.dat`: Ne⁺ ionic potential  
+- `Ar-II-rV.dat`: Ar⁺ ionic potential
+- `Kr-II-rV.dat`: Kr⁺ ionic potential
+- `Xe-II-rV.dat`: Xe⁺ ionic potential
+
+# Notes
+- The potential is interpolated onto the atomic electron's radial grid using spline interpolation
+- Data files contain r*V(r) values which are converted to V(r) by dividing by r
+- Units are atomic units (Hartree for energy, Bohr radius for distance)
+- The potential includes relativistic effects for heavier atoms
+
+# Errors
+Throws an error if the atomic number Z is not supported. Currently supports
+Z = 3, 10, 18, 36, 54 corresponding to Li, Ne, Ar, Kr, Xe respectively.
+
+# See Also
+- [`compute_atomic_electron`](@ref): Computes the initial bound state
+- [`distorted_electron`](@ref): Uses this potential for continuum wavefunctions
+- [`compute_partial_wave`](@ref): Higher-level interface for partial wave calculations
+"""
 function compute_potential(a_electron::AtomicElectron)
     if a_electron.Z == 3
         data = readdlm(dir * "/../deps/Li-II-rV.dat")

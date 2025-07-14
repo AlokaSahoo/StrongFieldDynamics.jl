@@ -1,5 +1,5 @@
-using Base.Threads: @threads
-using Distributed: pmap
+using Base.Threads
+using Distributed
 using Printf
 using ProgressMeter
 using OffsetArrays
@@ -389,8 +389,19 @@ function compute_energy_distribution(Z::Int64, pulse::Pulse;
 
     p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), settings.continuum_solution) for ep in energies]
     
-    @showprogress Threads.@threads for i in eachindex(p_electrons)
-        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+    if Distributed.nworkers() > 1
+        # Create a function for computing a single energy point
+        compute_single_energy = function(i)
+            return StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+        end
+        
+        # Use pmap to distribute computation across workers
+        distribution = @showprogress "Computing energy distribution..." pmap(compute_single_energy, 1:n_points)
+    else
+        # Use multithreading for single-node computation
+        @showprogress Threads.@threads for i in eachindex(p_electrons)
+            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+        end
     end
     
     return EnergyDistribution(θ, ϕ, energies, distribution, pulse)
@@ -435,8 +446,19 @@ function compute_angular_distribution(Z::Int64, pulse::Pulse;
     
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution)
 
-    @showprogress Threads.@threads for i in eachindex(ϕs)
-        distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+    if Distributed.nworkers() > 1
+        # Create a function for computing a single angle point
+        compute_single_angle = function(i)
+            return StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+        end
+        
+        # Use pmap to distribute computation across workers
+        distribution = @showprogress "Computing angular distribution..." pmap(compute_single_angle, 1:n_ϕ)
+    else
+        # Use multithreading for single-node computation
+        @showprogress Threads.@threads for i in eachindex(ϕs)
+            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+        end
     end
 
     return AngularDistribution(energy, θ, ϕs, distribution, pulse)
@@ -502,7 +524,7 @@ function compute_momentum_distribution(Z::Int64, pulse::Pulse;
         end
         
         # Use pmap to distribute computation
-        results = pmap(compute_single_momentum, 1:n_p)
+        results = @showprogress "Computing momentum distribution..." pmap(compute_single_momentum, 1:n_p)
         
         # Populate the distribution array from results
         for i in 1:n_p
