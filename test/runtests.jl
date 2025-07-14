@@ -52,13 +52,13 @@ using Test
         @testset "Pulse Shape Integration" begin
 
             pulse = StrongFieldDynamics.Pulse(I₀ = 5e13, λ=800, cycles=2, cep=float(pi), helicity=1, ϵ=1.0)
-            @test isapprox(StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, float(pi)/2, float(0), sign=1), -8.389285477361603e-5 + 3.036140632685656e-5im, rtol = 1e-4)
+            @test isapprox(StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, float(pi)/2, float(0), sign=1), -8.389285477361603e-5 + 3.036140632685656e-5im, rtol = 1e-5)
             
         end
 
         @testset "Distributions" begin
             pulse = StrongFieldDynamics.Pulse(I₀ = 5e13, λ=800, cycles=2, cep=float(pi), helicity=1, ϵ=1.0)
-            @test isapprox(compute_energy_distribution(a_electron, pulse; energy_range=(5*pulse.ω, 5*pulse.ω), n_points=1).distribution[1], 7.345370827208923e-7, rtol=1e-4 )
+            @test isapprox(compute_energy_distribution(36, pulse; settings = settings, energy_range=(5*pulse.ω, 5*pulse.ω), n_points=1).distribution[1], 7.345370827208923e-7, rtol=1e-5 )
         end
 
     end

@@ -19,7 +19,7 @@ Plot the energy distribution of photoelectrons with proper labels.
 - `Figure`: CairoMakie figure object
 """
 function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
-                                 ylabel::String="Probability", save_path::String="")
+                                 ylabel::String="Normalized Probability", save_path::String="")
     fig = Figure(size=(800, 600))
     ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
     
@@ -34,8 +34,15 @@ function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; ti
     end
     ax.title = plot_title
     
-    # Plot the energy distribution
-    lines!(ax, ed.energies, ed.distribution, linewidth=2, color=:blue, label="Photoelectron Distribution")
+    # Normalize the distribution for plotting
+    normalized_distribution = if !isempty(ed.distribution) && maximum(ed.distribution) > 0
+        ed.distribution ./ maximum(ed.distribution)
+    else
+        ed.distribution
+    end
+    
+    # Plot the normalized energy distribution
+    lines!(ax, ed.energies, normalized_distribution, linewidth=2, color=:blue, label="Photoelectron Distribution")
     
     # Add grid and formatting
     ax.xgridvisible = true
@@ -44,8 +51,8 @@ function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; ti
     ax.yminorgridvisible = true
     
     # Set axis limits with some padding
-    if !isempty(ed.distribution) && maximum(ed.distribution) > 0
-        ylims!(ax, 0, maximum(ed.distribution) * 1.1)
+    if !isempty(normalized_distribution) && maximum(normalized_distribution) > 0
+        ylims!(ax, 0, maximum(normalized_distribution) * 1.1)
     end
     xlims!(ax, minimum(ed.energies), maximum(ed.energies))
     
