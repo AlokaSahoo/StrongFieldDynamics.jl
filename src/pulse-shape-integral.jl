@@ -1,6 +1,7 @@
 using ApproxFun
 using LinearAlgebra
 using QuadGK
+using SpecialFunctions
 
 export sin2Sv
 
@@ -13,13 +14,13 @@ Returns the integration result of type ComplexF64.
 """
 function F1_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
 
-    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
-    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω)
+    # g(t)  = StrongFieldDynamics.Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
+    gp(t) = StrongFieldDynamics.Sv_prime_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω)
 
-    ga = 0.0
-    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.Tp
+    ga = StrongFieldDynamics.Sv_general(pulse.duration[begin], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general(pulse.duration[end], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * pulse.duration[end]
 
-    res = levin_integrate_approxfun(pulse.f, gp, 0.0, pulse.Tp, ga, gb)
+    res = levin_integrate_approxfun(pulse.f, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
 
     return pulse.A₀ * exp(-im * sign * pulse.cep) * res
 end
@@ -34,32 +35,32 @@ Returns the integration result of type ComplexF64.
 function F2_integral_levin_approxfun(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
 
     a2(t) = ( pulse.A₀^2 / (1 + pulse.ϵ^2) ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
-    # g(t)  = StrongFieldDynamics.sin2Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
-    gp(t) = StrongFieldDynamics.sin2Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
+    # g(t)  = StrongFieldDynamics.Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
+    gp(t) = StrongFieldDynamics.Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
 
-    ga = 0.0        # for sin2 pulse
-    gb = StrongFieldDynamics.sin2Sv_general(pulse.Tp, θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.Tp
+    ga = StrongFieldDynamics.Sv_general(pulse.duration[begin], θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general(pulse.duration[end], θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.duration[end]
 
-    return levin_integrate_approxfun(a2, gp, 0.0, pulse.Tp, ga, gb)
+    return levin_integrate_approxfun(a2, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
 end
 
 
 
 """
-    sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+    Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
 Computes the Volkov phase for a sin² pulse envelope at time `t`.
 """
-function sin2Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+function Sv_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
     term1 = p_electron.ε * t
 
     integrand2(τ)  = pulse.f(τ) * ( cos(pulse.ω*τ + pulse.cep) * cos(ϕ) + pulse.helicity * pulse.ϵ * sin(pulse.ω*τ + pulse.cep) * sin(ϕ) )
-    int2, _ = quadgk(integrand2, 0, t, maxevals=1e5) 
+    int2, _ = quadgk(integrand2, pulse.duration[begin], t, maxevals=1e5) 
     term2 = int2 * pulse.A₀ * p_electron.p * sin(θ) / sqrt(1+pulse.ϵ^2)
 
     integrand3(τ)  = pulse.f(τ)^2 * ( cos(pulse.ω*τ + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*τ + pulse.cep)^2 )
-    int3, _ = quadgk(integrand3, 0, t, maxevals=1e5) 
+    int3, _ = quadgk(integrand3, pulse.duration[begin], t, maxevals=1e5) 
     term3 = int3 * (pulse.A₀)^2 / (1+pulse.ϵ^2) / 2.0
 
     return term1 + term2 + term3
@@ -68,11 +69,11 @@ end
 
 
 """
-    sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+    Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
 Computes the time derivative of the Volkov phase for a sin² pulse envelope at time `t`.
 """
-function sin2Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+function Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
     term1 = p_electron.ε
 
@@ -495,6 +496,26 @@ function sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p
     S_p_t = term1 + term2 + term3 + term4 + term5 + term6 + term7
 
     return S_p_t
+end
+
+"""
+    gaussianSv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+
+"""
+function gaussianSv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+    ξ  = pulse.cep - pulse.helicity * ϕ
+
+    term1 = p_electron.ε * t
+
+    term2 = pulse.Up * sqrt(π/log(4)) * (pulse.Tp / t) * erf( 2 * sqrt(log(4)) * (t/pulse.Tp) )
+
+    term3 = pulse.A₀ * p_electron.p * sin(θ) / sqrt(2.0) * (pulse.Tp / 8) * sqrt(π/log(2)) * exp(-1 * pulse.ω^2 * pulse.Tp^2 / log(65536)) *
+                        ( exp(-1 * im * ξ) * erf( (im*pulse.Tp^2 * pulse.ω + 8 * log(2) * t) / (4 * pulse.Tp * sqrt(log(2))) ) - 
+                               exp(im * ξ) * erf( (im*pulse.Tp^2 * pulse.ω - 8 * log(2) * t) / (4 * pulse.Tp * sqrt(log(2))) ))
+
+    return term1 + term2 + term3
 end
 
 

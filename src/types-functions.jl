@@ -8,12 +8,44 @@ using SphericalHarmonics
 using WignerSymbols
 
 export ClebschGordan, Ylm
+export PulseEnvelope, Sin2, Gaussian, Rectangular
 export Pulse, AtomicElectron, ContinuumElectron, PartialWave, Settings
 export ContinuumSolution, Bessel, Distorted
 export Gauge, VelocityGauge, LengthGauge
 export IonizationScheme, Hydrogenic, Atomic
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
+
+
+
+"""
+    PulseEnvelope
+
+Enumeration of different pulse envelope types for laser pulses.
+
+# Variants
+- `Sin2`: Sin-squared envelope, ideal for smooth turn-on/turn-off
+- `Gaussian`: Gaussian envelope, commonly used in ultrafast optics
+- `Rectangular`: Rectangular (flat-top) envelope, for constant field amplitude
+
+# Usage
+```julia
+# Different envelope types
+sin2_pulse = Pulse(I₀=1e14, λ=800, cycles=6, envelope=Sin2)
+gauss_pulse = Pulse(I₀=1e14, λ=800, cycles=6, envelope=Gaussian)
+rect_pulse = Pulse(I₀=1e14, λ=800, cycles=6, envelope=Rectangular)
+```
+
+# Physics
+- **Sin2**: Envelope f(t) = sin²(ωt/2N) for smooth transitions
+- **Gaussian**: Envelope f(t) = exp(-t²/2σ²) for natural pulse shapes
+- **Rectangular**: Envelope f(t) = 1 for constant intensity during pulse
+"""
+@enum PulseEnvelope begin
+    Sin2
+    Gaussian
+    Rectangular
+end
 
 
 """
@@ -36,18 +68,32 @@ All internal values are stored in atomic units.
 - `ϵ::Float64`: Ellipticity parameter (0=linear, 1=circular)
 - `u::OffsetVector{Float64, Vector{Float64}}`: Polarization unit vector
 - `Sv::Function`: Volkov-phase function
+- `duration::Tuple{Float64, Float64}`: Time interval (t_start, t_end) for pulse duration
 
 # Required Arguments
 - `I₀`: Peak intensity (can include units, e.g., 1e14u"W/cm^2", or numeric value assuming W/cm²)
 - `λ`: Wavelength (can include units, e.g., 800u"nm", or numeric value assuming nm)
 - `cycles`: Number of optical cycles (positive integer)
-- `envelope`: Envelope type (:sin2, :gauss, :flat) or custom function f(t)
+- `envelope`: Envelope type (Sin2, Gaussian, Rectangular) or custom function f(t)
 - `cep`: Carrier-envelope phase in radians (default: 0.0)
 - `helicity`: Helicity (+1 or -1, default: +1)
 - `ϵ`: Ellipticity parameter (0=linear, 1=circular, default: 0.0)
+- `duration`: Time interval tuple (t_start, t_end) in a.u. (optional, auto-calculated if not provided)
 
 # Optional Arguments
 - `Sv`: Custom Volkov-phase function (default: t->0.0)
+
+# Examples
+```julia
+# Basic pulse with automatic duration
+pulse1 = Pulse(I₀=1e14, λ=800, cycles=6)
+
+# Pulse with custom duration
+pulse2 = Pulse(I₀=1e14, λ=800, cycles=6, duration=(-10.0, 50.0))
+
+# Pulse with Gaussian envelope
+pulse3 = Pulse(I₀=1e14, λ=800, cycles=6, envelope=Gaussian)
+```
 """
 struct Pulse
     I₀::Float64
@@ -63,10 +109,12 @@ struct Pulse
     ϵ::Float64
     u::OffsetVector{Float64, Vector{Float64}}
     Sv::Function
+    duration::Tuple{Float64, Float64}
     
     # Inner constructor for unit conversion - now only accepts keyword arguments
-    function Pulse(; I₀, λ, cycles::Int64, envelope::Union{Symbol,Function}=:sin2, 
-                   cep::Real=0.0, helicity::Int64=1, ϵ::Float64=0.0, Sv::Function=t->0.0)
+    function Pulse(; I₀, λ, cycles::Int64, envelope::Union{PulseEnvelope,Function}=Sin2, 
+                   cep::Real=0.0, helicity::Int64=1, ϵ::Float64=0.0, Sv::Function=t->0.0, 
+                   duration::Union{Tuple{Float64, Float64}, Nothing}=nothing)
         
         # Validate inputs
         if !(helicity == 1 || helicity == -1)
@@ -112,19 +160,27 @@ struct Pulse
         Tp = 2π * cycles / ω
         Up = A₀^2 / 4
 
+        # Initialize duration variable
+        pulse_duration = duration
+
         # Define envelope functions with proper normalization
-        f = if envelope isa Symbol
-            if envelope == :sin2
+        f = if envelope isa PulseEnvelope
+            if envelope == Sin2
+                pulse_duration = pulse_duration === nothing ? (0.0, Tp) : pulse_duration
                 t -> ( 0 ≤ t ≤ Tp) ? sin(ω * t / 2 / cycles)^2 : 0.0
-            elseif envelope == :gauss
+            elseif envelope == Gaussian
+                pulse_duration = pulse_duration === nothing ? (-3*Tp, 3*Tp) : pulse_duration
                 σ = Tp / (2 * sqrt(2 * log(2)))
                 t -> exp(-(t^2) / (2 * σ^2))
-            elseif envelope == :flat
-                t -> (abs(t) <= Tp/2) ? 1.0 : 0.0
+            elseif envelope == Rectangular
+                pulse_duration = pulse_duration === nothing ? (0.0, Tp) : pulse_duration
+                t -> ( 0 ≤ t ≤ Tp) ? 1.0 : 0.0
             else
-                throw(ArgumentError("Unknown envelope type: $envelope. Use :sin2, :gauss, :flat, or provide custom function"))
+                throw(ArgumentError("Unknown envelope type: $envelope. Use Sin2, Gaussian, Rectangular, or provide custom function"))
             end
         else
+            # For custom envelope functions, use provided duration or default
+            pulse_duration = pulse_duration === nothing ? (0.0, Tp) : pulse_duration
             envelope
         end
 
@@ -135,7 +191,7 @@ struct Pulse
         um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
         u = OffsetVector([um, u0, up], -1:1)
 
-        new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv)
+        new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration)
     end
 end
 
