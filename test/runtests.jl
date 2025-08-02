@@ -39,13 +39,13 @@ using Test
                 pulse = StrongFieldDynamics.Pulse(I₀ = 5e13, λ=800, cycles=2, cep=float(pi), helicity=1, ϵ=1.0)
 
                 @test StrongFieldDynamics.sin2Sv(pulse.Tp-1, float(pi/4), float(pi/4), pulse, p_electron) ≈ 111.4862413771776
-                @test StrongFieldDynamics.sin2Sv_general(pulse.Tp-1, float(pi/4), float(pi/4), pulse, p_electron) ≈ 111.4862413771776
+                @test StrongFieldDynamics.Sv_general(pulse.Tp-1, float(pi/4), float(pi/4), pulse, p_electron) ≈ 111.4862413771776
             end
 
             @testset "Elliptical" begin
                 pulse = StrongFieldDynamics.Pulse(I₀ = 5e13, λ=800, cycles=2, cep=float(pi), helicity=1, ϵ=0.5)
 
-                @test StrongFieldDynamics.sin2Sv_general(pulse.Tp-1, float(pi/4), float(pi/4), pulse, p_electron) ≈ 111.48624327809965
+                @test StrongFieldDynamics.Sv_general(pulse.Tp-1, float(pi/4), float(pi/4), pulse, p_electron) ≈ 111.48624327809965
             end
         end
 

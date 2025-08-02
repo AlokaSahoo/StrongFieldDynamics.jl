@@ -357,25 +357,25 @@ end
 """
     AngularDistribution
 
-Results from angle-resolved photoelectron distribution at fixed energy and theta.
+Results from angle-resolved photoelectron distribution calculation at fixed energy.
 
 # Fields
 - `energy::Float64`: Fixed photoelectron energy (a.u.)
-- `θ::Float64`: Fixed polar angle (radians)
+- `θ::Vector{Float64}`: Polar angle grid (radians)
 - `ϕ::Vector{Float64}`: Azimuthal angle grid (radians)
-- `distribution::Vector{Float64}`: Angular distribution P(ϕ) at fixed θ
+- `distribution::Matrix{Float64}`: Angular distribution P(θ,ϕ) 
 - `pulse::Pulse`: Laser pulse
 """
 struct AngularDistribution
     energy::Float64
-    θ::Float64
+    θ::Vector{Float64}
     ϕ::Vector{Float64}
-    distribution::Vector{Float64}
+    distribution::Matrix{Float64}
     pulse::Pulse
     
-    function AngularDistribution(energy::Float64, θ::Float64, ϕ::Vector{Float64}, distribution::Vector{Float64}, pulse::Pulse)
-        length(distribution) == length(ϕ) || 
-            throw(ArgumentError("distribution length must match length(ϕ)"))
+    function AngularDistribution(energy::Float64, θ::Vector{Float64}, ϕ::Vector{Float64}, distribution::Matrix{Float64}, pulse::Pulse)
+        size(distribution) == (length(θ), length(ϕ)) || 
+            throw(ArgumentError("distribution size must match (length(θ), length(ϕ))"))
         new(energy, θ, ϕ, distribution, pulse)
     end
 end
@@ -466,16 +466,18 @@ end
 
 """
     compute_angular_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy::Float64=1.0,
-                                θ::Real=pi/2, ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200) -> AngularDistribution
+                                θ_range::Tuple{Float64,Float64}=(0.0, π), n_θ::Int=50,
+                                ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200) -> AngularDistribution
 
-Computes the angular distribution of photoelectrons at fixed energy and polar angle using SFA.
+Computes the angular distribution of photoelectrons at fixed energy using SFA.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
 - `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `energy::Float64=1.0`: Fixed photoelectron energy (a.u.)
-- `θ::Real=π/2`: Fixed polar angle (radians)
+- `θ_range::Tuple{Float64,Float64}=(π/2, π/2)`: Polar angle range (radians)
+- `n_θ::Int=1`: Number of polar angle points
 - `ϕ_range::Tuple{Float64,Float64}=(0.0, 2π)`: Azimuthal angle range (radians)
 - `n_ϕ::Int=200`: Number of azimuthal angle points
 
@@ -485,39 +487,48 @@ Computes the angular distribution of photoelectrons at fixed energy and polar an
 # Example
 ```julia
 pulse = Pulse(I₀=5e13, λ=800, cycles=6, ϵ=0.5)
-ad = compute_angular_distribution(36, pulse; energy=2.0, n_ϕ=360)
+ad = compute_angular_distribution(36, pulse; energy=2.0, θ_range=(0.0, π), n_θ=100, n_ϕ=360)
 ```
 """
 function compute_angular_distribution(Z::Int64, pulse::Pulse;
                                      settings=Settings(),
                                      energy::Float64=1.0,
-                                     θ::Real=pi/2,
+                                     θ_range::Tuple{Float64,Float64}=(π/2, π/2),
+                                     n_θ::Int=1,
                                      ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
                                      n_ϕ::Int=200)
     
+    θs = range(θ_range[1], θ_range[2], length=n_θ) |> collect
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect
-    distribution = zeros(Float64, n_ϕ)
+    distribution = zeros(Float64, n_θ, n_ϕ)
 
     a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
     
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution)
 
     if Distributed.nworkers() > 1
-        # Create a function for computing a single angle point
+        # Create a function for computing a single angular point
         compute_single_angle = function(i)
-            return StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+            θ_idx = ((i-1) ÷ n_ϕ) + 1
+            ϕ_idx = ((i-1) % n_ϕ) + 1
+            return StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θs[θ_idx]), float(ϕs[ϕ_idx]))
         end
         
         # Use pmap to distribute computation across workers
-        distribution = @showprogress "Computing angular distribution..." pmap(compute_single_angle, 1:n_ϕ)
+        results = @showprogress "Computing angular distribution..." pmap(compute_single_angle, 1:(n_θ*n_ϕ))
+        
+        # Reshape results into distribution array
+        distribution = reshape(results, n_θ, n_ϕ)
     else
         # Use multithreading for single-node computation
-        @showprogress Threads.@threads for i in eachindex(ϕs)
-            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θ), float(ϕs[i]))
+        @showprogress Threads.@threads for i in 1:(n_θ*n_ϕ)
+            θ_idx = ((i-1) ÷ n_ϕ) + 1
+            ϕ_idx = ((i-1) % n_ϕ) + 1
+            distribution[θ_idx, ϕ_idx] = StrongFieldDynamics.probability(pulse, a_electron, p_electron, float(θs[θ_idx]), float(ϕs[ϕ_idx]))
         end
     end
 
-    return AngularDistribution(energy, θ, ϕs, distribution, pulse)
+    return AngularDistribution(energy, θs, ϕs, distribution, pulse)
 end
 
 
@@ -555,12 +566,13 @@ function compute_momentum_distribution(Z::Int64, pulse::Pulse;
                                       energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
                                       n_theta::Int=1, n_phi::Int=50)
     energies = range(energy_range[1], energy_range[2], length=n_p) |> collect
-    # θ = range(0.0, π, length=n_theta) |> collect
-    θs = [float(pi/2)] |> collect
+    # θs = [float(pi/2)] |> collect
+    θs = range(0.0, π, length=n_theta) |> collect
     φs = range(0.0, 2π, length=n_phi) |> collect
     distribution = zeros(Float64, n_p, n_theta, n_phi)
 
-    local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
+    # local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
+    local_probability_func = StrongFieldDynamics.probability
 
     a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
 

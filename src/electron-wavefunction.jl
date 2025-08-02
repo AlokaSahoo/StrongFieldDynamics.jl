@@ -68,7 +68,15 @@ function compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64
 
     hydrogenic(r, IP) = 2^2.5 * IP^1.5 * r * exp(-sqrt(2*IP)*r)
 
-    if     (Z == 3)         # Lithium 2s ionization
+    if     (Z == 1)         # Hydrogen 1s ionization
+        n = 1 ; l = 0 ;
+        j = 1//2    ;  
+        if ip == 0.0  ip = 0.5 end  # Default IP: 13.6 eV
+
+        data = readdlm(dir * "/../deps/H-I.dat", skipstart = 2)
+        r_, P_ = data[:,1], data[:,2]  # r in bohr, P(r) radial wavefunction
+
+    elseif     (Z == 3)         # Lithium 2s ionization
         n = 2 ; l = 0 ;
         j = 1//2    ;  
         if ip == 0.0  ip = 5.3917/27.21138 end  # Default IP: 5.3917 eV
@@ -773,11 +781,11 @@ end
 
 
 #=======================================================================================================
-#using DifferentialEquations
+using DifferentialEquations
 
-# using Plots
-# using SpecialFunctions # For loggamma (complex gamma function)
-# Plots.GRBackend()
+using Plots
+using SpecialFunctions # For loggamma (complex gamma function)
+Plots.GRBackend()
 
 # --- 1. Define Potentials ---
 

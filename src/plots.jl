@@ -70,71 +70,123 @@ end
 
 """
     plot_angular_distribution(ad::AngularDistribution; title::String="", save_path::String="", 
-                             plot_type::Symbol=:polar)
+                             plot_type::Symbol=:auto)
 
-Plot the angular distribution of photoelectrons at fixed energy and theta.
+Plot the angular distribution of photoelectrons at fixed energy.
 
 # Arguments
 - `ad::AngularDistribution`: Angular distribution data to plot
 - `title::String=""`: Plot title (auto-generated if empty)
 - `save_path::String=""`: Path to save the plot (optional)
-- `plot_type::Symbol=:polar`: Plot type (:polar for polar plot, :cartesian for line plot)
+- `plot_type::Symbol=:auto`: Plot type (:auto for automatic selection, :phi_slice for polar plot, :phi_slice for φ slice at fixed θ, :theta_slice for θ slice at fixed φ, :heatmap for 2D plot)
 
 # Returns
 - `Figure`: CairoMakie figure object
+
+# Notes
+- When plot_type=:auto (default), the function automatically chooses:
+  - Polar plot if either θ or φ has only one value
+  - Warning and polar plot at first θ value if both have multiple values
 """
 function plot_angular_distribution(ad::AngularDistribution; title::String="", save_path::String="", 
-                                  plot_type::Symbol=:polar)
+                                  plot_type::Symbol=:auto)
     
     # Auto-generate title if not provided
     plot_title = if isempty(title)
         # Convert intensity back to W/cm²
         I_Wcm2 = ad.pulse.I₀ * 3.51e16
         pulse_info = "I₀ = $(round(I_Wcm2/1e14, digits=1))×10¹⁴ W/cm², $(ad.pulse.np) cycles, ϵ = $(ad.pulse.ϵ), helicity = $(ad.pulse.helicity)"
-        "Angular Distribution at E = $(round(ad.energy, digits=3)) a.u., θ = $(round(ad.θ * 180/π, digits=1))°, $(pulse_info)"
+        "Angular Distribution at E = $(round(ad.energy, digits=3)) a.u., $(pulse_info)"
     else
         title
     end
     
-    if plot_type == :polar
+    # Determine plot type automatically if requested
+    if plot_type == :auto
+        n_theta = length(ad.θ)
+        n_phi = length(ad.ϕ)
+        
+        if n_theta == 1 && n_phi > 1
+            # Single θ, multiple φ - use polar plot
+            plot_type = :phi_slice
+        elseif n_theta > 1 && n_phi == 1
+            # Multiple θ, single φ - use theta slice plot
+            plot_type = :theta_slice
+        elseif n_theta > 1 && n_phi > 1
+            # Both multiple - warn and use polar plot with first θ
+            @warn "Both θ and φ have multiple values (θ: $n_theta, φ: $n_phi). Using polar plot with first θ value (θ = $(round(ad.θ[1] * 180/π, digits=1))°)."
+            plot_type = :phi_slice
+        else
+            # Both single - use polar plot
+            plot_type = :phi_slice
+        end
+    end
+    
+    if plot_type == :phi_slice
         # Create polar plot
         fig = Figure(size=(800, 800))
         ax = PolarAxis(fig[1, 1], title=plot_title)
         
-        # Convert to radial coordinates for polar plot
-        # Since we have fixed θ and varying φ, we plot as a radial function
-        r_values = ad.distribution ./ maximum(ad.distribution)  # Normalize for better visualization
+        # Determine which data to plot
+        if length(ad.θ) == 1
+            # Single θ value, plot vs φ
+            r_values = ad.distribution[1, :] ./ maximum(ad.distribution[1, :])
+            angles = ad.ϕ
+            actual_θ = ad.θ[1]
+            subtitle = "at θ = $(round(actual_θ * 180/π, digits=1))°"
+        else
+            # Multiple θ values, use first one and plot vs φ
+            r_values = ad.distribution[1, :] ./ maximum(ad.distribution[1, :])
+            angles = ad.ϕ
+            actual_θ = ad.θ[1]
+            subtitle = "at θ = $(round(actual_θ * 180/π, digits=1))° (first value)"
+        end
+        
+        # Update title with specific θ information
+        ax.title = plot_title * "\n" * subtitle
         
         # Plot as polar line
-        lines!(ax, ad.ϕ, r_values, linewidth=3, color=:blue)
+        lines!(ax, angles, r_values, linewidth=3, color=:blue)
         
-    else  # cartesian plot
+    elseif plot_type == :theta_slice
+        # Plot θ distribution at specified or middle φ value using polar plot
+        fig = Figure(size=(800, 800))
+        φ_idx = length(ad.ϕ) == 1 ? 1 : (length(ad.ϕ) ÷ 2 + 1)
+        actual_φ = ad.ϕ[φ_idx]
+        
+        ax = PolarAxis(fig[1, 1], 
+                      title="$plot_title\nSlice at φ = $(round(actual_φ * 180/π, digits=1))°")
+        
+        # Normalize the distribution for plotting
+        r_values = ad.distribution[:, φ_idx] ./ maximum(ad.distribution[:, φ_idx])
+        
+        # Plot as polar line with theta as angles
+        lines!(ax, ad.θ, r_values, linewidth=3, color=:red, label="P(θ)")
+        
+    elseif plot_type == :heatmap
+        # Create 2D heatmap: θ vs φ
         fig = Figure(size=(800, 600))
         ax = Axis(fig[1, 1], 
                  xlabel="Azimuthal Angle φ (radians)", 
-                 ylabel="Probability Density",
+                 ylabel="Polar Angle θ (radians)",
                  title=plot_title)
         
-        # Plot as line plot
-        lines!(ax, ad.ϕ, ad.distribution, linewidth=2, color=:blue, label="P(φ)")
+        # Normalize the distribution for better visualization
+        normalized_distribution = ad.distribution ./ maximum(ad.distribution)
         
-        # Add grid and formatting
+        hm = heatmap!(ax, ad.ϕ, ad.θ, normalized_distribution, colormap=:viridis)
+        Colorbar(fig[1, 2], hm, label="Normalized Probability Density")
+        
+        # Set axis ticks in terms of π
+        ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
+        ax.yticks = ([0, π/4, π/2, 3π/4, π], ["0", "π/4", "π/2", "3π/4", "π"])
+        
+        # Add grid
         ax.xgridvisible = true
         ax.ygridvisible = true
-        ax.xminorgridvisible = true
-        ax.yminorgridvisible = true
         
-        # Set axis limits with some padding
-        if !isempty(ad.distribution) && maximum(ad.distribution) > 0
-            ylims!(ax, 0, maximum(ad.distribution) * 1.1)
-        end
-        xlims!(ax, minimum(ad.ϕ), maximum(ad.ϕ))
-        
-        # Add x-axis tick labels in terms of π
-        ax.xticks = ([0, π/2, π, 3π/2, 2π], ["0", "π/2", "π", "3π/2", "2π"])
-        
-        # Add legend
-        axislegend(ax, position=:rt)
+    else
+        throw(ArgumentError("plot_type must be :auto, :phi_slice, :phi_slice, :theta_slice, or :heatmap"))
     end
     
     # Save if path provided
