@@ -202,7 +202,10 @@ Z = 3, 10, 18, 36, 54 corresponding to Li, Ne, Ar, Kr, Xe respectively.
 - [`compute_partial_wave`](@ref): Higher-level interface for partial wave calculations
 """
 function compute_potential(a_electron::AtomicElectron)
-    if a_electron.Z == 3
+    if a_electron.Z == 1
+        data = readdlm(dir * "/../deps/H-II-rV.dat")
+        r_, rV_ = data[:,1], data[:,2]
+    elseif a_electron.Z == 3
         data = readdlm(dir * "/../deps/Li-II-rV.dat")
         r_, rV_ = data[:,1], data[:,2]
     elseif a_electron.Z == 10
