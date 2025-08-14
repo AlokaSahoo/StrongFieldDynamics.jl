@@ -519,6 +519,57 @@ function gaussianSv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electr
 end
 
 
+############################################################# Numerical Phase Danish ################################################################
+# Concrete types for Vector Potential components
+struct VectorPotential <: AbstractVectorPotential
+    x::Number
+    y::Number
+    z::Number
+end
+
+
+# Envelope function
+function envelope_function(time::Number, pulse::Pulse)
+    argument = pulse.omega * time / (2 * pulse.num_cycles)
+    return sin(argument)^2
+end
+
+# Vector potential function returning a concrete VectorPotential object
+function vector_potential(time::Number, pulse::Pulse)::VectorPotential
+    sqrt_factor = sqrt(1 + pulse.ellipticity^2)
+    f = envelope_function(time, pulse)
+    x = pulse.amplitude * f / sqrt_factor * cos(pulse.omega * time + pulse.phi_cep)
+    y = pulse.ellipticity * pulse.helicity * pulse.amplitude * f / sqrt_factor * sin(pulse.omega * time + pulse.phi_cep)
+    return VectorPotential(x, y, 0.0)
+end
+
+# Numerical integration for A² and p⋅A components
+function integrate_A2(ts, component::Symbol, pulse::Pulse)
+    integrand(t) = (component == :x ? vector_potential(t, pulse).x^2 :
+                     component == :y ? vector_potential(t, pulse).y^2 :
+                     vector_potential(t, pulse).z^2)
+    result, _ = quadgk(integrand, 0.0, ts, maxevals=1e5)
+    return result
+end
+
+function integrate_A(ts, component::Symbol, pulse::Pulse)
+    integrand(t) =  (component == :x ? vector_potential(t, pulse).x :
+                              component == :y ? vector_potential(t, pulse).y :
+                              vector_potential(t, pulse).z)
+    result, _ = quadgk(integrand, 0.0, ts, maxevals=1e5)
+    return result
+end
+
+# Calculate S(t) numerically
+function S(t, momentum::AbstractObservable, pulse::Pulse, ionization_potential::AbstractIonizationPotential)
+    kinetic_term = 0.5 * (momentum.x^2 + momentum.y^2 + momentum.z^2) * t
+    potential_term = integrate_A2(t, :x, pulse) + integrate_A2(t, :y, pulse) + integrate_A2(t, :z, pulse)
+    interaction_term = momentum.x * integrate_A(t, :x, pulse) + momentum.y * integrate_A(t, :y, pulse) + momentum.z * integrate_A(t, :z, pulse)
+    ip_term = ionization_potential.value * t
+    
+    return kinetic_term + 0.5 * potential_term + interaction_term + ip_term
+end
+
 ################################################################## Danish's Part #################################################################
 
 # abstract type Sign end
