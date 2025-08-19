@@ -1,14 +1,18 @@
-using StrongFieldDynamics
+using Distributed
 
-pulse = StrongFieldDynamics.Pulse(I₀ = 1.5e14, λ=800, cycles=10, cep=float(0.), helicity=1, ϵ=1.0)
+addprocs(48)
 
-a_electron = StrongFieldDynamics.compute_atomic_electron(36, 4, 1) ;
-r  = a_electron.r
-IP = -a_electron.ε   #14/27.21138 #eV
-nP(r, IP) = 2^2.5 * IP^1.5 * r * exp(-sqrt(2*IP)*r) ;
-aP = nP.(r, IP) ;
-a_electron = StrongFieldDynamics.AtomicElectron(36, 1, 0, 1//2, a_electron.ε, r, aP) ;
+@everywhere using StrongFieldDynamics
 
-md = compute_momentum_distribution(a_electron, pulse, energy_range=(0.0, 10*pulse.ω), n_p=150, n_phi=300) ;
+pulse = StrongFieldDynamics.Pulse(I₀ = 1.5e14, λ=800, cycles=10, cep=float(pi), helicity=1, ϵ=1.0)
+
+settings = Settings(ionization_scheme=Atomic) #Settings(ionization_scheme=Atomic)
+
+md = compute_momentum_distribution(36, pulse; settings = settings, energy_range=(0.0, 12*pulse.ω), n_p=150, n_phi=200) ;
+# StrongFieldDynamics.plot_momentum_distribution(md, save_path="/home/alok/Softwares/StrongFieldDynamics.jl/examples/md-14Aug25.png")
 StrongFieldDynamics.plot_momentum_distribution(md)
+
+for worker in workers()
+	rmprocs(worker)
+end
 

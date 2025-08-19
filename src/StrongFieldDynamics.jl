@@ -34,7 +34,7 @@ include("amplitudes.jl")
 include("electron-wavefunction.jl")
 
 # Plotting and visualization utilities
-include("plots.jl")
+include("plotting-tools.jl")
 
 # Pulse shape analysis and field integration
 include("pulse-shape-integral.jl")

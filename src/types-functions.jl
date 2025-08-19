@@ -154,7 +154,7 @@ struct Pulse
         E₀_au = sqrt(8π * I_au / c_au)
 
         # Vector potential amplitude A₀ = E₀/ω
-        A₀ = E₀_au / ω
+        A₀ = E₀_au / ω  # sqrt(2* I_au) / ω  # E₀_au / ω
 
         # Pulse duration and ponderomotive energy
         Tp = 2π * cycles / ω
@@ -564,15 +564,15 @@ md = compute_momentum_distribution(54, pulse; energy_range=(0.0, 5.0), n_p=100, 
 function compute_momentum_distribution(Z::Int64, pulse::Pulse;
                                       settings=Settings(), 
                                       energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
-                                      n_theta::Int=1, n_phi::Int=50)
+                                      n_theta::Int=1, n_phi::Int=50, coupled::Bool=true)
     energies = range(energy_range[1], energy_range[2], length=n_p) |> collect
-    # θs = [float(pi/2)] |> collect
-    θs = range(0.0, π, length=n_theta) |> collect
+    θs = [float(pi/2)] |> collect
+    # θs = range(0.0, π, length=n_theta) |> collect
     φs = range(0.0, 2π, length=n_phi) |> collect
     distribution = zeros(Float64, n_p, n_theta, n_phi)
 
-    # local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
-    local_probability_func = StrongFieldDynamics.probability
+    local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
+    # local_probability_func = StrongFieldDynamics.probability
 
     a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
 

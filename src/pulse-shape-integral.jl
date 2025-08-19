@@ -442,63 +442,6 @@ end
 
 
 """
-    sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-
-"""
-function sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-
-    # --- Convert Spherical Momentum to Cartesian ---
-    px = p_electron.p * sin(theta) * cos(phi)
-    py = p_electron.p * sin(theta) * sin(phi)
-    # The full squared magnitude of the momentum is simply p_electron.p^2
-    p_squared = p_electron.p^2
-
-    # Extract other parameters from the Pulse object
-    A₀ = pulse.A₀
-    ϵ = pulse.ϵ
-    λ_h = pulse.helicity
-    ω = pulse.ω
-    np = pulse.np
-    cep = pulse.cep
-
-    # --- Calculation based on Eq. A.16 ---
-    ω_vec = [ω * (1 - 1 / np), ω, ω * (1 + 1 / np)]
-    A_vec = [-0.25 * A₀, 0.5 * A₀, -0.25 * A₀]
-
-    # Term 1: Free-electron kinetic energy (uses the full p²) 
-    term1 = 0.5 * p_squared * t
-
-    # Term 2: Ponderomotive energy contribution
-    term2 = (t / 4.0) * sum(A_vec.^2)
-
-    # Term 3: Oscillatory diagonal term
-    term3_sum = sum((A_vec[i]^2 / (8.0 * ω_vec[i])) * sin(2.0 * ω_vec[i] * t + 2.0 * cep) for i in 1:3)
-    term3 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term3_sum
-
-    # Terms 4 & 5: Off-diagonal contributions
-    term4_sum = 0.0
-    term5_sum = 0.0
-    for i in 1:2
-        for j in (i+1):3
-            term4_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] - ω_vec[j]))) * sin((ω_vec[i] - ω_vec[j]) * t)
-            term5_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] + ω_vec[j]))) * sin((ω_vec[i] + ω_vec[j]) * t + 2.0 * cep)
-        end
-    end
-    term4 = term4_sum
-    term5 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term5_sum
-
-    # Terms 6 & 7: Momentum-field coupling terms (use pₓ and pᵧ) [cite: 95, 96]
-    term6 = (px / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * sin(ω_vec[i] * t + cep) for i in 1:3)
-    term7 = -ϵ * λ_h * (py / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * cos(ω_vec[i] * t + cep) for i in 1:3)
-
-    # Combine all terms for the final Volkov phase
-    S_p_t = term1 + term2 + term3 + term4 + term5 + term6 + term7
-
-    return S_p_t
-end
-
-"""
     gaussianSv(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
 
 
@@ -527,20 +470,30 @@ struct VectorPotential <: AbstractVectorPotential
     z::Number
 end
 
+struct Observable
+    x::Number
+    y::Number
+    z::Number
+end
+
 
 # Envelope function
 function envelope_function(time::Number, pulse::Pulse)
-    argument = pulse.omega * time / (2 * pulse.num_cycles)
+    argument = pulse.ω * time / (2 * pulse.np)
     return sin(argument)^2
 end
 
 # Vector potential function returning a concrete VectorPotential object
 function vector_potential(time::Number, pulse::Pulse)::VectorPotential
-    sqrt_factor = sqrt(1 + pulse.ellipticity^2)
+    sqrt_factor = sqrt(1 + pulse.ϵ^2)
     f = envelope_function(time, pulse)
-    x = pulse.amplitude * f / sqrt_factor * cos(pulse.omega * time + pulse.phi_cep)
-    y = pulse.ellipticity * pulse.helicity * pulse.amplitude * f / sqrt_factor * sin(pulse.omega * time + pulse.phi_cep)
+    x = pulse.A₀ * f / sqrt_factor * cos(pulse.ω * time + pulse.cep)
+    y = pulse.ϵ * pulse.helicity * pulse.A₀ * f / sqrt_factor * sin(pulse.ω * time + pulse.cep)
     return VectorPotential(x, y, 0.0)
+end
+
+function A2_danish(t, pulse)
+    return integrate_A2(t, :x, pulse) + integrate_A2(t, :y, pulse) + integrate_A2(t, :z, pulse)
 end
 
 # Numerical integration for A² and p⋅A components
@@ -561,14 +514,86 @@ function integrate_A(ts, component::Symbol, pulse::Pulse)
 end
 
 # Calculate S(t) numerically
-function S(t, momentum::AbstractObservable, pulse::Pulse, ionization_potential::AbstractIonizationPotential)
+function S(t, momentum::Observable, pulse::Pulse)
     kinetic_term = 0.5 * (momentum.x^2 + momentum.y^2 + momentum.z^2) * t
     potential_term = integrate_A2(t, :x, pulse) + integrate_A2(t, :y, pulse) + integrate_A2(t, :z, pulse)
     interaction_term = momentum.x * integrate_A(t, :x, pulse) + momentum.y * integrate_A(t, :y, pulse) + momentum.z * integrate_A(t, :z, pulse)
-    ip_term = ionization_potential.value * t
-    
-    return kinetic_term + 0.5 * potential_term + interaction_term + ip_term
+    # ip_term = ionization_potential.value * t
+
+    return kinetic_term + 0.5 * potential_term + interaction_term #+ ip_term
 end
+
+function sin2Sv_danish(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+    momentum = Observable(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
+
+    return S(t, momentum, pulse)
+
+end
+
+function sin2Sv_prime_danish(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+    momentum = Observable(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
+    A = vector_potential(t, pulse)
+    E = 0.5 * ((momentum.x + A.x)^2 + (momentum.y + A.y)^2 + (momentum.z + A.z)^2)
+    return E
+end
+
+#======================================Obsolate===============================================#
+# """
+#     sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+
+# """
+# function sin2Sv_danish(t::Float64, theta::Float64, phi::Float64, pulse::Pulse, p_electron::ContinuumElectron)
+
+#     # --- Convert Spherical Momentum to Cartesian ---
+#     px = p_electron.p * sin(theta) * cos(phi)
+#     py = p_electron.p * sin(theta) * sin(phi)
+#     # The full squared magnitude of the momentum is simply p_electron.p^2
+#     p_squared = p_electron.p^2
+
+#     # Extract other parameters from the Pulse object
+#     A₀ = pulse.A₀
+#     ϵ = pulse.ϵ
+#     λ_h = pulse.helicity
+#     ω = pulse.ω
+#     np = pulse.np
+#     cep = pulse.cep
+
+#     # --- Calculation based on Eq. A.16 ---
+#     ω_vec = [ω * (1 - 1 / np), ω, ω * (1 + 1 / np)]
+#     A_vec = [-0.25 * A₀, 0.5 * A₀, -0.25 * A₀]
+
+#     # Term 1: Free-electron kinetic energy (uses the full p²) 
+#     term1 = 0.5 * p_squared * t
+
+#     # Term 2: Ponderomotive energy contribution
+#     term2 = (t / 4.0) * sum(A_vec.^2)
+
+#     # Term 3: Oscillatory diagonal term
+#     term3_sum = sum((A_vec[i]^2 / (8.0 * ω_vec[i])) * sin(2.0 * ω_vec[i] * t + 2.0 * cep) for i in 1:3)
+#     term3 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term3_sum
+
+#     # Terms 4 & 5: Off-diagonal contributions
+#     term4_sum = 0.0
+#     term5_sum = 0.0
+#     for i in 1:2
+#         for j in (i+1):3
+#             term4_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] - ω_vec[j]))) * sin((ω_vec[i] - ω_vec[j]) * t)
+#             term5_sum += (A_vec[i] * A_vec[j] / (2.0 * (ω_vec[i] + ω_vec[j]))) * sin((ω_vec[i] + ω_vec[j]) * t + 2.0 * cep)
+#         end
+#     end
+#     term4 = term4_sum
+#     term5 = ((1.0 - ϵ^2) / (1.0 + ϵ^2)) * term5_sum
+
+#     # Terms 6 & 7: Momentum-field coupling terms (use pₓ and pᵧ) [cite: 95, 96]
+#     term6 = (px / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * sin(ω_vec[i] * t + cep) for i in 1:3)
+#     term7 = -ϵ * λ_h * (py / sqrt(1.0 + ϵ^2)) * sum((A_vec[i] / ω_vec[i]) * cos(ω_vec[i] * t + cep) for i in 1:3)
+
+#     # Combine all terms for the final Volkov phase
+#     S_p_t = term1 + term2 + term3 + term4 + term5 + term6 + term7
+
+#     return S_p_t
+# end
 
 ################################################################## Danish's Part #################################################################
 
