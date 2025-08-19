@@ -15,6 +15,7 @@ export Gauge, VelocityGauge, LengthGauge
 export IonizationScheme, Hydrogenic, Atomic
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
+export Cartesian, spherical2cartesian
 
 
 
@@ -655,6 +656,78 @@ struct Settings
     end
 end
 
+
+"""
+    Cartesian
+
+A simple data structure to represent 3D Cartesian coordinates.
+
+# Fields
+- `x::Number`: x-coordinate
+- `y::Number`: y-coordinate  
+- `z::Number`: z-coordinate
+
+# Example
+```julia
+# Create Cartesian coordinates
+point = Cartesian(1.0, 2.0, 3.0)
+println("Position: (", point.x, ", ", point.y, ", ", point.z, ")")
+
+# Convert from spherical coordinates
+r, θ, ϕ = 2.0, π/4, π/6
+cartesian_point = spherical2cartesian(r, θ, ϕ)
+```
+
+# See Also
+- [`spherical2cartesian`](@ref): Convert spherical to Cartesian coordinates
+"""
+struct Cartesian
+    x::Number
+    y::Number
+    z::Number
+end
+
+"""
+    spherical2cartesian(r::Float64, θ::Float64, ϕ::Float64) -> Cartesian
+
+Convert spherical coordinates to Cartesian coordinates.
+
+# Arguments
+- `r::Float64`: Radial distance (magnitude)
+- `θ::Float64`: Polar angle (angle from z-axis, 0 to π radians)
+- `ϕ::Float64`: Azimuthal angle (angle in xy-plane from x-axis, 0 to 2π radians)
+
+# Returns
+- `Cartesian`: A Cartesian coordinate struct with x, y, z components
+
+# Mathematical Relations
+The conversion follows standard spherical coordinate conventions:
+- `x = r sin(θ) cos(ϕ)`
+- `y = r sin(θ) sin(ϕ)`
+- `z = r cos(θ)`
+
+# Examples
+```julia
+# Convert point at unit sphere
+r, θ, ϕ = 1.0, π/2, 0.0  # Point on positive x-axis
+cart = spherical2cartesian(r, θ, ϕ)
+# Returns: Cartesian(1.0, 0.0, 0.0)
+
+# Convert general point
+r, θ, ϕ = 2.0, π/4, π/3
+cart = spherical2cartesian(r, θ, ϕ)
+# Returns: Cartesian(0.707..., 1.224..., 1.414...)
+
+# See Also
+- [`Cartesian`](@ref): The returned coordinate structure
+"""
+function spherical2cartesian(r::Float64, θ::Float64, ϕ::Float64)
+    x = r * sin(θ) * cos(ϕ)
+    y = r * sin(θ) * sin(ϕ)
+    z = r * cos(θ)
+
+    return Cartesian(x, y, z)
+end
 
 """
     ClebschGordan(ja, ma, jb, mb, Jab, Mab)

@@ -464,17 +464,17 @@ end
 
 ############################################################# Numerical Phase Danish ################################################################
 # Concrete types for Vector Potential components
-struct VectorPotential <: AbstractVectorPotential
-    x::Number
-    y::Number
-    z::Number
-end
+# struct VectorPotential
+#     x::Number
+#     y::Number
+#     z::Number
+# end
 
-struct Observable
-    x::Number
-    y::Number
-    z::Number
-end
+# struct Observable
+#     x::Number
+#     y::Number
+#     z::Number
+# end
 
 
 # Envelope function
@@ -484,12 +484,12 @@ function envelope_function(time::Number, pulse::Pulse)
 end
 
 # Vector potential function returning a concrete VectorPotential object
-function vector_potential(time::Number, pulse::Pulse)::VectorPotential
+function vector_potential(time::Number, pulse::Pulse)::Cartesian
     sqrt_factor = sqrt(1 + pulse.ϵ^2)
     f = envelope_function(time, pulse)
     x = pulse.A₀ * f / sqrt_factor * cos(pulse.ω * time + pulse.cep)
     y = pulse.ϵ * pulse.helicity * pulse.A₀ * f / sqrt_factor * sin(pulse.ω * time + pulse.cep)
-    return VectorPotential(x, y, 0.0)
+    return Cartesian(x, y, 0.0)
 end
 
 function A2_danish(t, pulse)
@@ -514,7 +514,7 @@ function integrate_A(ts, component::Symbol, pulse::Pulse)
 end
 
 # Calculate S(t) numerically
-function S(t, momentum::Observable, pulse::Pulse)
+function S(t, momentum::Cartesian, pulse::Pulse)
     kinetic_term = 0.5 * (momentum.x^2 + momentum.y^2 + momentum.z^2) * t
     potential_term = integrate_A2(t, :x, pulse) + integrate_A2(t, :y, pulse) + integrate_A2(t, :z, pulse)
     interaction_term = momentum.x * integrate_A(t, :x, pulse) + momentum.y * integrate_A(t, :y, pulse) + momentum.z * integrate_A(t, :z, pulse)
@@ -524,14 +524,15 @@ function S(t, momentum::Observable, pulse::Pulse)
 end
 
 function sin2Sv_danish(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-    momentum = Observable(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
+    # momentum = Cartesian(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
+    momentum = spherical2cartesian(p_electron.p, θ, ϕ)
 
     return S(t, momentum, pulse)
 
 end
 
 function sin2Sv_prime_danish(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_electron::ContinuumElectron)
-    momentum = Observable(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
+    momentum = Cartesian(p_electron.p * sin(θ) * cos(ϕ), p_electron.p * sin(θ) * sin(ϕ), p_electron.p * cos(θ))
     A = vector_potential(t, pulse)
     E = 0.5 * ((momentum.x + A.x)^2 + (momentum.y + A.y)^2 + (momentum.z + A.z)^2)
     return E
