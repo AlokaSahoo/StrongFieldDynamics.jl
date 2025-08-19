@@ -16,6 +16,8 @@ export IonizationScheme, Hydrogenic, Atomic
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
 
+const c_au = 1.0/0.0072973525643
+const α    = 0.0072973525643
 
 
 """
@@ -59,6 +61,7 @@ All internal values are stored in atomic units.
 - `A₀::Float64`: Peak vector potential amplitude (a.u.)
 - `λ::Float64`: Wavelength (nm) - stored in atomic units
 - `ω::Float64`: Angular frequency (a.u.)
+- `k::Float64`: Wavenumber (a.u.)
 - `cycles::Int64`: Number of optical cycles
 - `Tp::Float64`: Pulse duration (a.u.)
 - `Up::Float64`: Ponderomotive energy (a.u.)
@@ -69,6 +72,11 @@ All internal values are stored in atomic units.
 - `u::OffsetVector{Float64, Vector{Float64}}`: Polarization unit vector
 - `Sv::Function`: Volkov-phase function
 - `duration::Tuple{Float64, Float64}`: Time interval (t_start, t_end) for pulse duration
+- `isbessel::Bool`: True if a Bessel pulse is considered
+- `θk::Float64` Opening Angle
+- `mγ::Float64` ...
+- `ϕr::Float64`: ...
+- `rp::Float64`: r perpendicular component 
 
 # Required Arguments
 - `I₀`: Peak intensity (can include units, e.g., 1e14u"W/cm^2", or numeric value assuming W/cm²)
@@ -100,6 +108,7 @@ struct Pulse
     A₀::Float64
     λ::Float64
     ω::Float64
+    k::Float64
     np::Int64
     Tp::Float64
     Up::Float64
@@ -110,24 +119,28 @@ struct Pulse
     u::OffsetVector{Float64, Vector{Float64}}
     Sv::Function
     duration::Tuple{Float64, Float64}
+    isbessel::Bool
+    θk::Float64
+    mγ::Float64
+    ϕr::Float64
+    rp::Float64
+    χ::Float64
+    z::Float64
+    cms::OffsetVector{Float64, Vector{Float64}}
     
     # Inner constructor for unit conversion - now only accepts keyword arguments
     function Pulse(; I₀, λ, cycles::Int64, envelope::Union{PulseEnvelope,Function}=Sin2, 
                    cep::Real=0.0, helicity::Int64=1, ϵ::Float64=0.0, Sv::Function=t->0.0, 
-                   duration::Union{Tuple{Float64, Float64}, Nothing}=nothing)
+                   duration::Union{Tuple{Float64, Float64}, Nothing}=nothing,
+                   isbessel::Bool=false, θk::Float64=0.0, mγ::Float64=1.0, 
+                   ϕr::Float64=0.0, rp::Float64=0.0, χ::Float64=0.0, z::Float64=0.0)
         
         # Validate inputs
-        if !(helicity == 1 || helicity == -1)
-            throw(ArgumentError("helicity must be either +1 or -1"))
-        end
+        if !(helicity == 1 || helicity == -1)   throw(ArgumentError("helicity must be either +1 or -1"))        end
         
-        if cycles <= 0
-            throw(ArgumentError("cycles must be positive"))
-        end
+        if cycles <= 0   throw(ArgumentError("cycles must be positive"))        end
         
-        if !(0.0 <= ϵ <= 1.0)
-            throw(ArgumentError("ellipticity ϵ must be between 0 and 1"))
-        end
+        if !(0.0 <= ϵ <= 1.0)    throw(ArgumentError("ellipticity ϵ must be between 0 and 1"))        end
         
         # Convert inputs to atomic units
         # --- Conversion factors from CODATA2022 ---
@@ -136,7 +149,7 @@ struct Pulse
         # 1 a.u. of time = 2.4188843265857e-17 s
         
         # Speed of light in atomic units
-        c_au = 1.0/0.0072973525643  # CODATA2022 value for speed of light in a.u.
+        # c_au = 1.0/0.0072973525643  # CODATA2022 value for speed of light in a.u.
 
         # Convert intensity to atomic units (from W/cm^2)
         I_au = I₀ / 3.50944506e16
@@ -147,6 +160,12 @@ struct Pulse
         # Calculate derived quantities using CODATA2022 constants
         ω = 2π * c_au / λ_au
 
+        # wave number
+        k = ω / c_au
+
+        # Pulse duration
+        Tp = 2π * cycles / ω
+
         # Electric field amplitude in atomic units
         # E₀(a.u.) = sqrt(4 * π * I_au / c_au)
         # But in atomic units, E₀(a.u.) = sqrt(8π * I_au / c_au) is also used
@@ -156,8 +175,41 @@ struct Pulse
         # Vector potential amplitude A₀ = E₀/ω
         A₀ = E₀_au / ω
 
-        # Pulse duration and ponderomotive energy
-        Tp = 2π * cycles / ω
+        # Calculate the polarization vector components in spherical basis
+        # u-1, u0, u+1 components
+        up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
+        u0 = 0.0
+        um = 1/sqrt(2*(1 + ϵ^2))  * (1 - helicity * ϵ)
+        
+        # Polarization unit vector
+        u  = OffsetVector([um, u0, up], -1:1)
+
+        # Initialize cms
+        cms = OffsetVector(zeros(3), -1:1)
+
+        if isbessel
+            χ = k * sin(θk)
+
+            cms = OffsetArray( [0.5 * (1 - helicity * cos(θk)), ( (-1 / sqrt(2)) * sin(θk) ), 0.5 * (1 + helicity * cos(θk)) ], -1:1)
+
+            I_au, rp = get_max_bessel_intensity( ω, λ_au, A₀, mγ, χ, cms)
+
+            # for mγ = 1 the maximum intensity is at the centre
+            if mγ == 1 rp = 0.0 end
+
+            E₀_au = sqrt(8π * I_au / c_au)
+            A₀    = E₀_au / ω
+
+            # Polarization components
+            up = up * -(-im)^(mγ+1) * cms[-1] * besselj(mγ+1, χ*rp) * exp(im*(mγ+1)*ϕr + im*k*cos(θk)*z)
+            u0 = 1.0 * (-im)^(mγ)   * cms[0]  * besselj(mγ, χ*rp)   * exp(im*(mγ)*ϕr   + im*k*cos(θk)*z)
+            um = um * -(-im)^(mγ-1) * cms[1]  * besselj(mγ-1, χ*rp) * exp(im*(mγ-1)*ϕr + im*k*cos(θk)*z)
+            
+            # Polarization unit vector
+            u  = OffsetVector([um, u0, up], -1:1)
+        end
+
+        # Ponderomotive energy
         Up = A₀^2 / 4
 
         # Initialize duration variable
@@ -184,15 +236,28 @@ struct Pulse
             envelope
         end
 
-        # Calculate the polarization vector components in spherical basis
-        # u-1, u0, u+1 components
-        up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
-        u0 = 0.0
-        um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
-        u = OffsetVector([um, u0, up], -1:1)
-
-        new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration)
+        new(I_au, A₀, λ_au, ω, k, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration, isbessel, θk, mγ, ϕr, rp, χ, z, cms)
     end
+end
+
+
+"""
+    get_max_bessel_intensity
+
+Computes the intensity for a Bessel pulse
+"""
+function get_max_bessel_intensity( ω, λ_au, A₀, mγ, χ, cms)
+
+    rps = range(0., stop=100*λ_au, length=1000)
+    I_bessel = zeros(size(rps))
+
+    for (i, rp) in enumerate(rps)
+        I_bessel[i]   = ( A₀^2 * ω^2 * χ / (4pi) ) * abs( cms[1]^2 * besselj(mγ-1, χ*rp)^2 - cms[-1]^2 * besselj(mγ+1, χ*rp)^2 )
+    end
+
+    I_bessel_max, id_max = findmax(I_bessel)
+    
+    return I_bessel_max, rps[id_max]
 end
 
 
