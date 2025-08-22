@@ -2,11 +2,11 @@ using Dierckx
 using QuadGK
 
 """
-    probality(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
+    probality(pulse::AbstractPulse, a_electron::AtomicElectron, p_electron::ContinuumElectron)
 
 Calculates the ionization probability
 """
-function probability(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+function probability(pulse::AbstractPulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
 
     prob = zero(Float64)
 
@@ -62,7 +62,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                 term2 += factor2 * matrix_elem12
             end
 
-            # Only compute term3 if lp == l
+            # Term 3 A^2 Only compute term3 if lp == l
             if lp == l
                 factor3 = Ylm(l, mj - msp, θ, ϕ) *
                         ClebschGordan(l, mj - msp, 1//2, msp, j, mj) *
@@ -73,6 +73,77 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     end
     term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
     term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+
+    # Total result
+    return term1 + term2 + term3
+end
+
+
+"""
+    T0(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, mj::Rational{Int64}, msp::Rational{Int64}, θ::Float64, ϕ::Float64)
+
+Computes the direct scattering amplitude 
+"""
+function T0(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, mj::Rational{Int64}, msp::Rational{Int64}, θ::Float64, ϕ::Float64)
+    # Maximum number of partial waves
+    lp_max = 5
+
+    l = a_electron.l
+    j = a_electron.j
+    r = a_electron.r
+    # u = pulse.u
+
+    # Intitialize term1, term2, term3
+    term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; term3 = zero(ComplexF64) ;
+
+    # Calculating the pulse shape before hand
+    pulse_shape_integral = [ [0.0 + 0.0*im, 0.0 + 0.0*im] , [0.0 + 0.0*im, 0.0 + 0.0*im] ]
+
+    pulse_shape_integral[1][1] = StrongFieldDynamics.F1_integral_levin_approxfun(pulse.colors[1], pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    pulse_shape_integral[1][2] = StrongFieldDynamics.F1_integral_levin_approxfun(pulse.colors[1], pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+
+    pulse_shape_integral[2][1] = StrongFieldDynamics.F1_integral_levin_approxfun(pulse.colors[2], pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    pulse_shape_integral[2][2] = StrongFieldDynamics.F1_integral_levin_approxfun(pulse.colors[2], pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+
+    # Evaluation for term1 and term2
+    for lp in 0:lp_max
+        for jp in abs(lp - 1//2):(lp + 1//2)
+            # reduced matrix element
+            p_partialwave = compute_partial_wave(lp, jp, p_electron, a_electron)
+            matrix_elem12 = matrix_element(p_partialwave, a_electron, r)
+            
+            if matrix_elem12 == 0.0 continue end
+
+            for (i, color) in enumerate(pulse.colors)
+                for q in -1:1
+                    
+                    # Term 1 contribution
+                    factor1 = (-1)^q * color.u[q] * Ylm(lp, (mj - msp - q), θ, ϕ) *
+                                ClebschGordan(lp, (mj - msp - q), 1//2, msp, jp, (mj - q) ) * 
+                                ClebschGordan(j, mj, 1, -q, jp, (mj - q) )
+                    term1 += factor1 * (-im * sqrt(2 / pi) ) * matrix_elem12 * pulse_shape_integral[i][1]
+
+                    # Term 2 contribution 
+                    factor2 = -color.u[-q] * Ylm(lp, (mj - msp + q), θ, ϕ) *
+                                ClebschGordan(lp, (mj - msp + q), 1//2, msp, jp, (mj + q)) * 
+                                ClebschGordan(j, mj, 1, q, jp, mj + q)
+                    term2 += factor2 * (-im * sqrt(2 / pi) ) * matrix_elem12 * pulse_shape_integral[i][2]
+                end
+
+            end
+
+            # Term 3 A^2 Only compute term3 if lp == l
+            if lp == l
+                factor3 = Ylm(l, mj - msp, θ, ϕ) *
+                        ClebschGordan(l, mj - msp, 1//2, msp, j, mj) *
+                        inner_product(p_partialwave, a_electron, r)
+                term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ)
+            end
+
+        end
+    end
+    # term1 = term1 * (-im * sqrt(2 / pi) ) # * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    # term2 = term2 * (-im * sqrt(2 / pi) ) # * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # Total result
     return term1 + term2 + term3

@@ -17,6 +17,7 @@ export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
 export Cartesian, spherical2cartesian
 
+abstract type AbstractPulse end
 
 
 """
@@ -50,7 +51,7 @@ end
 
 
 """
-    Pulse
+    Pulse <: AbstractPulse
 
 Represents a laser pulse with all necessary parameters for strong-field calculations.
 All internal values are stored in atomic units.
@@ -96,7 +97,7 @@ pulse2 = Pulse(I₀=1e14, λ=800, cycles=6, duration=(-10.0, 50.0))
 pulse3 = Pulse(I₀=1e14, λ=800, cycles=6, envelope=Gaussian)
 ```
 """
-struct Pulse
+struct Pulse <: AbstractPulse
     I₀::Float64
     A₀::Float64
     λ::Float64
@@ -111,6 +112,8 @@ struct Pulse
     u::OffsetVector{Float64, Vector{Float64}}
     Sv::Function
     duration::Tuple{Float64, Float64}
+    Ax::Function
+    Ay::Function
     
     # Inner constructor for unit conversion - now only accepts keyword arguments
     function Pulse(; I₀, λ, cycles::Int64, envelope::Union{PulseEnvelope,Function}=Sin2, 
@@ -192,8 +195,55 @@ struct Pulse
         um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
         u = OffsetVector([um, u0, up], -1:1)
 
-        new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration)
+        # Computing the cartesian components of Vector potetnial
+        Ax(t) = A₀ * f(t) * cos(ω*t + cep) / sqrt(1 + ϵ^2)
+        Ay(t) = A₀ * f(t) * sin(ω*t + cep) * helicity * ϵ / sqrt(1 + ϵ^2)
+
+        new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration, Ax, Ay)
     end
+end
+
+struct MultiColor <: AbstractPulse
+    ncolors::Int64
+    colors::Vector{Pulse}
+    I₀::Vector{Float64}
+    A₀::Vector{Float64}
+    λ::Vector{Float64}
+    ω::Vector{Float64}
+    np::Int64
+    Tp::Float64
+    Up::Vector{Float64}
+    f::Vector{Function}
+    cep::Vector{Float64}
+    helicity::Vector{Int64}
+    ϵ::Vector{Float64}
+    u::Vector{OffsetVector{Float64, Vector{Float64}}}
+    duration::Tuple{Float64, Float64}
+    Ax::Function
+    Ay::Function
+end
+
+
+function add_pulses(pulse1, pulse2)
+    ncolors = 2
+    colors = [pulse1, pulse2]
+    I₀ = [pulse1.I₀,pulse2.I₀]
+    A₀ = [pulse1.A₀,pulse2.A₀]
+    λ =  [pulse1.λ, pulse2.λ]
+    ω =  [pulse1.ω, pulse2.ω]
+    np = pulse1.np
+    Tp = pulse1.Tp
+    Up = [pulse1.Up, pulse2.Up]
+    f  = [pulse1.f, pulse2.f]
+    cep  = [pulse1.cep, pulse2.cep]
+    helicity  = [pulse1.helicity, pulse2.helicity]
+    ϵ  = [pulse1.ϵ, pulse2.ϵ]
+    u  = [pulse1.u, pulse2.u]
+    duration = pulse1.duration
+    Ax(t) = pulse1.Ax(t) + pulse2.Ax(t)
+    Ay(t) = pulse1.Ay(t) + pulse2.Ay(t)
+
+    return MultiColor(ncolors, colors, I₀, A₀, λ, ω, np, Tp, Up, f, cep, helicity, ϵ, u, duration, Ax, Ay)
 end
 
 
@@ -339,16 +389,16 @@ Results from energy-resolved photoelectron distribution calculation at fixed ang
 - `ϕ::Float64`: Azimuthal angle (radians)
 - `energies::Vector{Float64}`: Energy grid (a.u.)
 - `distribution::Vector{Float64}`: Differential ionization probability d²P/dΩdE
-- `pulse::Pulse`: Laser pulse
+- `pulse::AbstractPulse`: Laser pulse
 """
 struct EnergyDistribution
     θ::Float64
     ϕ::Float64
     energies::Vector{Float64}
     distribution::Vector{Float64}
-    pulse::Pulse
+    pulse::AbstractPulse
     
-    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, distribution::Vector{Float64}, pulse::Pulse)
+    function EnergyDistribution(θ::Float64, ϕ::Float64, energies::Vector{Float64}, distribution::Vector{Float64}, pulse::AbstractPulse)
         length(energies) == length(distribution) || throw(ArgumentError("energies and distribution must have same length"))
         new(θ, ϕ, energies, distribution, pulse)
     end
@@ -365,16 +415,16 @@ Results from angle-resolved photoelectron distribution calculation at fixed ener
 - `θ::Vector{Float64}`: Polar angle grid (radians)
 - `ϕ::Vector{Float64}`: Azimuthal angle grid (radians)
 - `distribution::Matrix{Float64}`: Angular distribution P(θ,ϕ) 
-- `pulse::Pulse`: Laser pulse
+- `pulse::AbstractPulse`: Laser pulse
 """
 struct AngularDistribution
     energy::Float64
     θ::Vector{Float64}
     ϕ::Vector{Float64}
     distribution::Matrix{Float64}
-    pulse::Pulse
+    pulse::AbstractPulse
     
-    function AngularDistribution(energy::Float64, θ::Vector{Float64}, ϕ::Vector{Float64}, distribution::Matrix{Float64}, pulse::Pulse)
+    function AngularDistribution(energy::Float64, θ::Vector{Float64}, ϕ::Vector{Float64}, distribution::Matrix{Float64}, pulse::AbstractPulse)
         size(distribution) == (length(θ), length(ϕ)) || 
             throw(ArgumentError("distribution size must match (length(θ), length(ϕ))"))
         new(energy, θ, ϕ, distribution, pulse)
@@ -392,16 +442,16 @@ Results from momentum-resolved photoelectron distribution calculation in spheric
 - `θ::Vector{Float64}`: Polar angle grid (radians, 0 to π)
 - `φ::Vector{Float64}`: Azimuthal angle grid (radians, 0 to 2π)
 - `distribution::Array{Float64,3}`: 3D momentum distribution P(p,θ,φ)
-- `pulse::Pulse`: Laser pulse
+- `pulse::AbstractPulse`: Laser pulse
 """
 struct MomentumDistribution
     p::Vector{Float64}
     θ::Vector{Float64}
     φ::Vector{Float64}
     distribution::Array{Float64,3}
-    pulse::Pulse
+    pulse::AbstractPulse
     
-    function MomentumDistribution(p::Vector{Float64}, θ::Vector{Float64}, φ::Vector{Float64}, distribution::Array{Float64,3}, pulse::Pulse)
+    function MomentumDistribution(p::Vector{Float64}, θ::Vector{Float64}, φ::Vector{Float64}, distribution::Array{Float64,3}, pulse::AbstractPulse)
         size(distribution) == (length(p), length(θ), length(φ)) || 
             throw(ArgumentError("distribution size must match momentum grid dimensions"))
         new(p, θ, φ, distribution, pulse)
@@ -410,14 +460,14 @@ end
 
 
 """
-    compute_energy_distribution(Z::Int64, pulse::Pulse; settings=Settings(), θ::Real=pi/2, ϕ::Real=0.0,
+    compute_energy_distribution(Z::Int64, pulse::AbstractPulse; settings=Settings(), θ::Real=pi/2, ϕ::Real=0.0,
                                energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_points::Int64=200) -> EnergyDistribution
 
 Computes the energy-resolved photoelectron spectrum at specified angles using SFA.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
-- `pulse::Pulse`: Laser pulse parameters
+- `pulse::AbstractPulse`: Laser pulse parameters
 - `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `θ::Real=π/2`: Polar detection angle (radians)
 - `ϕ::Real=0.0`: Azimuthal detection angle (radians)
@@ -433,7 +483,7 @@ pulse = Pulse(I₀=1e14, λ=800, cycles=8)
 ed = compute_energy_distribution(18, pulse; energy_range=(0.0, 2.0), n_points=500)
 ```
 """
-function compute_energy_distribution(Z::Int64, pulse::Pulse;
+function compute_energy_distribution(Z::Int64, pulse::AbstractPulse;
                                     settings=Settings(), 
                                     θ::Real=pi/2, ϕ::Real=0.0,
                                     energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
@@ -466,7 +516,7 @@ end
 
 
 """
-    compute_angular_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy::Float64=1.0,
+    compute_angular_distribution(Z::Int64, pulse::AbstractPulse; settings=Settings(), energy::Float64=1.0,
                                 θ_range::Tuple{Float64,Float64}=(0.0, π), n_θ::Int=50,
                                 ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200) -> AngularDistribution
 
@@ -474,7 +524,7 @@ Computes the angular distribution of photoelectrons at fixed energy using SFA.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
-- `pulse::Pulse`: Laser pulse parameters
+- `pulse::AbstractPulse`: Laser pulse parameters
 - `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `energy::Float64=1.0`: Fixed photoelectron energy (a.u.)
 - `θ_range::Tuple{Float64,Float64}=(π/2, π/2)`: Polar angle range (radians)
@@ -491,7 +541,7 @@ pulse = Pulse(I₀=5e13, λ=800, cycles=6, ϵ=0.5)
 ad = compute_angular_distribution(36, pulse; energy=2.0, θ_range=(0.0, π), n_θ=100, n_ϕ=360)
 ```
 """
-function compute_angular_distribution(Z::Int64, pulse::Pulse;
+function compute_angular_distribution(Z::Int64, pulse::AbstractPulse;
                                      settings=Settings(),
                                      energy::Float64=1.0,
                                      θ_range::Tuple{Float64,Float64}=(π/2, π/2),
@@ -534,14 +584,14 @@ end
 
 
 """
-    compute_momentum_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
+    compute_momentum_distribution(Z::Int64, pulse::AbstractPulse; settings=Settings(), energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
                                  n_p::Int=50, n_theta::Int=1, n_phi::Int=50, coupled::Bool=true) -> MomentumDistribution
 
 Computes the 3D momentum distribution of photoelectrons using SFA in spherical coordinates.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
-- `pulse::Pulse`: Laser pulse parameters
+- `pulse::AbstractPulse`: Laser pulse parameters
 - `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
 - `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
 - `n_p::Int=50`: Number of momentum magnitude points
@@ -562,7 +612,7 @@ md = compute_momentum_distribution(54, pulse; energy_range=(0.0, 5.0), n_p=100, 
 - Higher `n_phi` values provide better angular resolution
 - `coupled=true` includes interchannel coupling effects
 """
-function compute_momentum_distribution(Z::Int64, pulse::Pulse;
+function compute_momentum_distribution(Z::Int64, pulse::AbstractPulse;
                                       settings=Settings(), 
                                       energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
                                       n_theta::Int=1, n_phi::Int=50, coupled::Bool=true)

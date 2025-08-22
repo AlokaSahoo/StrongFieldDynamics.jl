@@ -86,6 +86,82 @@ function Sv_prime_general(t::Float64, θ::Float64, ϕ::Float64, pulse::Pulse, p_
 
 end
 
+"""
+    F1_integral_levin_approxfun(color::Pulse, pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F1_integral_levin_approxfun(color::Pulse, pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+    # g(t)  = StrongFieldDynamics.Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
+    gp(t) = StrongFieldDynamics.Sv_prime_general_cartesian(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω)
+
+    ga = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[begin], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω) * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[end], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω) * pulse.duration[end]
+
+    res = levin_integrate_approxfun(color.f, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
+
+    return color.A₀ * exp(-im * sign * color.cep) * res
+end
+
+
+"""
+    F2_integral_levin_approxfun(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F2_integral_levin_approxfun(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    a2(t)   = pulse.Ax(t)^2 + pulse.Ay(t)^2
+    # a2(t) = ( pulse.A₀^2 / (1 + pulse.ϵ^2) ) * pulse.f(t)^2 * ( cos(pulse.ω*t + pulse.cep)^2 + pulse.ϵ^2 * sin(pulse.ω*t + pulse.cep)^2 )
+    # g(t)  = StrongFieldDynamics.Sv_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε * t
+    gp(t) = StrongFieldDynamics.Sv_prime_general_cartesian(t, θ, ϕ, pulse, p_electron) - a_electron.ε 
+
+    ga = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[begin], θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[end], θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.duration[end]
+
+    return levin_integrate_approxfun(a2, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
+end
+
+
+"""
+    Sv_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse::Union{Pulse, MultiColor}, p_electron::ContinuumElectron)
+
+Computes the Volkov phase for a general pulse envelope at time `t`.
+"""
+function Sv_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse::Union{Pulse, MultiColor}, p_electron::ContinuumElectron)
+
+    p = spherical2cartesian(p_electron.p, θ, ϕ)
+
+    # First term
+    term1 = p_electron.ε * t
+
+    int_pxAx, _ = quadgk(t -> p.x * pulse.Ax(t), pulse.duration[begin], t, maxevals=1e5)
+    int_pyAy, _ = quadgk(t -> p.y * pulse.Ay(t), pulse.duration[begin], t, maxevals=1e5)
+
+    int_Ax2 , _ = quadgk(t -> pulse.Ax(t)^2, pulse.duration[begin], t, maxevals=1e5)
+    int_Ay2 , _ = quadgk(t -> pulse.Ay(t)^2, pulse.duration[begin], t, maxevals=1e5)
+
+    return ( term1 + int_pxAx + int_pyAy + 0.5 * int_Ax2 + 0.5 * int_Ay2 )
+
+end
+
+
+"""
+    Sv_prime_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse::Union{Pulse, MultiColor}, p_electron::ContinuumElectron)
+
+Computes the Volkov phase for a sin² pulse envelope at time `t`.
+"""
+function Sv_prime_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse::Union{Pulse, MultiColor}, p_electron::ContinuumElectron)
+
+    p = spherical2cartesian(p_electron.p, θ, ϕ)
+
+    return ( p_electron.ε + p.x * pulse.Ax(t) + p.y * pulse.Ay(t) + 0.5 * pulse.Ax(t)^2 + 0.5 * pulse.Ay(t)^2 )
+
+end
+
 
 """
     levin_integrate_approxfun(f::Function, gp::Function, a::Float64, b::Float64, ga::Float64, gb::Float64)

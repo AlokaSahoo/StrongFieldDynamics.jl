@@ -1,6 +1,6 @@
 using CairoMakie
 
-export plot_energy_distribution, plot_angular_distribution, plot_momentum_distribution
+export plot_energy_distribution, plot_angular_distribution, plot_momentum_distribution, plot_vector_potential_cartesian, plot_vector_potential_trajectory
 
 """
     plot_energy_distribution(ed::EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
@@ -18,10 +18,11 @@ Plot the energy distribution of photoelectrons with proper labels.
 # Returns
 - `Figure`: CairoMakie figure object
 """
-function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; title::String="", xlabel::String="Energy (a.u.)", 
-                                 ylabel::String="Normalized Probability", save_path::String="")
+function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution ; title::String="", xlabel::String="Energy (a.u.)", 
+                                 ylabel::String="Normalized Probability", save_path::String="", 
+                                 scaleX::Function=identity, scaleY::Function=identity)
     fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
+    ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel, xscale= scaleX, yscale = scaleY)
     
     # Auto-generate title if not provided
     plot_title = if isempty(title)
@@ -52,7 +53,7 @@ function plot_energy_distribution(ed::StrongFieldDynamics.EnergyDistribution; ti
     
     # Set axis limits with some padding
     if !isempty(normalized_distribution) && maximum(normalized_distribution) > 0
-        ylims!(ax, 0, maximum(normalized_distribution) * 1.1)
+        ylims!(ax, minimum(normalized_distribution), maximum(normalized_distribution) * 1.1)
     end
     xlims!(ax, minimum(ed.energies), maximum(ed.energies))
     
@@ -352,6 +353,108 @@ function plot_momentum_distribution(md::MomentumDistribution; title::String="", 
         println("Plot saved to: $save_path")
     end
     
+    return fig
+end
+
+"""
+    plot_vector_potential_cartesian(pulse::Pulse, t_range::AbstractVector; 
+                                   title::String="", xlabel::String="Time (a.u.)", 
+                                   ylabel::String="Vector Potential (a.u.)", 
+                                   save_path::String="")
+
+Plot the vector potential Ax and Ay of the pulse in a 2D Cartesian plot.
+
+# Arguments
+- `pulse::Pulse`: Pulse object containing Ax and Ay functions
+- `t_range::AbstractVector`: Time points to evaluate the vector potential
+- `title::String=""`: Plot title (auto-generated if empty)
+- `xlabel::String="Time (a.u.)"`: X-axis label
+- `ylabel::String="Vector Potential (a.u.)"`: Y-axis label
+- `save_path::String=""`: Path to save the plot (optional)
+
+# Returns
+- `Figure`: CairoMakie figure object
+"""
+function plot_vector_potential_cartesian(pulse, t_range::AbstractVector; 
+                                         title::String="", 
+                                         xlabel::String="Time (a.u.)", 
+                                         ylabel::String="Vector Potential (a.u.)", 
+                                         save_path::String="")
+    fig = Figure(size=(800, 600))
+    ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
+    
+    plot_title = isempty(title) ? 
+        "Vector Potential (Ax, Ay) vs Time\nI₀ = $(round(pulse.I₀ * 3.51e16 / 1e14, digits=1))×10¹⁴ W/cm², $(pulse.np) cycles, ϵ = $(pulse.ϵ), helicity = $(pulse.helicity)" : 
+        title
+    ax.title = plot_title
+
+    Ax_vals = [pulse.Ax(t) for t in t_range]
+    Ay_vals = [pulse.Ay(t) for t in t_range]
+
+    lines!(ax, t_range, Ax_vals, linewidth=2, color=:blue, label="Ax(t)")
+    lines!(ax, t_range, Ay_vals, linewidth=2, color=:red, label="Ay(t)")
+
+    axislegend(ax, position=:rt)
+    ax.xgridvisible = true
+    ax.ygridvisible = true
+    ax.xminorgridvisible = true
+    ax.yminorgridvisible = true
+
+    if !isempty(save_path)
+        save(save_path, fig)
+        println("Plot saved to: $save_path")
+    end
+
+    return fig
+end
+
+"""
+    plot_vector_potential_trajectory(pulse::Pulse, t_range::AbstractVector; 
+                                    title::String="", xlabel::String="Ax (a.u.)", 
+                                    ylabel::String="Ay (a.u.)", save_path::String="")
+
+Plot the trajectory of the vector potential in the x-y plane (Ay vs Ax).
+
+# Arguments
+- `pulse::Pulse`: Pulse object containing Ax and Ay functions
+- `t_range::AbstractVector`: Time points to evaluate the vector potential
+- `title::String=""`: Plot title (auto-generated if empty)
+- `xlabel::String="Ax (a.u.)"`: X-axis label
+- `ylabel::String="Ay (a.u.)"`: Y-axis label
+- `save_path::String=""`: Path to save the plot (optional)
+
+# Returns
+- `Figure`: CairoMakie figure object
+"""
+function plot_vector_potential_trajectory(pulse, t_range::AbstractVector; 
+                                          title::String="", 
+                                          xlabel::String="Ax (a.u.)", 
+                                          ylabel::String="Ay (a.u.)", 
+                                          save_path::String="", plot_title::String="")
+    fig = Figure(size=(600, 600))
+    ax = Axis(fig[1, 1], xlabel=xlabel, ylabel=ylabel)
+    
+    plot_title = isempty(title) ? 
+        "Vector Potential Trajectory (Ay vs Ax)\nI₀ = $(round(pulse.I₀ * 3.51e16 / 1e14, digits=1))×10¹⁴ W/cm², $(pulse.np) cycles, ϵ = $(pulse.ϵ), helicity = $(pulse.helicity)" : 
+        title
+    ax.title = plot_title
+
+    Ax_vals = [pulse.Ax(t) for t in t_range]
+    Ay_vals = [pulse.Ay(t) for t in t_range]
+
+    lines!(ax, Ax_vals, Ay_vals, linewidth=2, color=:purple, label="A(t) trajectory")
+
+    axislegend(ax, position=:rt)
+    ax.xgridvisible = true
+    ax.ygridvisible = true
+    ax.xminorgridvisible = true
+    ax.yminorgridvisible = true
+
+    if !isempty(save_path)
+        save(save_path, fig)
+        println("Plot saved to: $save_path")
+    end
+
     return fig
 end
 
