@@ -382,8 +382,8 @@ function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::Cont
                 term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ)
             end
     end
-    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
-    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+    term1 = term1 * (-im * sqrt(2 * pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    term2 = term2 * (-im * sqrt(2 * pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # Total result
     return term1 + term2 + term3

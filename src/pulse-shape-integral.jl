@@ -127,6 +127,27 @@ end
 
 
 """
+    F1_integral_levin_approxfun(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+Computes the pulse shape integral of the form:
+Returns the integration result of type ComplexF64.
+"""
+function F1_integral_levin_approxfun(pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+
+    # g(t)  = StrongFieldDynamics.Sv_general(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * pulse.ω) * t
+    gp(t) = StrongFieldDynamics.Sv_prime_general_cartesian(t, θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω)
+
+    ga = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[begin], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω) * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general_cartesian(pulse.duration[end], θ, ϕ, pulse, p_electron) - (a_electron.ε + sign * color.ω) * pulse.duration[end]
+
+    res = levin_integrate_approxfun(color.f, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
+
+    return color.A₀ * exp(-im * sign * color.cep) * res
+end
+
+
+
+"""
     Sv_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse::Union{Pulse, MultiColor}, p_electron::ContinuumElectron)
 
 Computes the Volkov phase for a general pulse envelope at time `t`.
@@ -160,6 +181,21 @@ function Sv_prime_general_cartesian(t::Float64, θ::Float64, ϕ::Float64, pulse:
 
     return ( p_electron.ε + p.x * pulse.Ax(t) + p.y * pulse.Ay(t) + 0.5 * pulse.Ax(t)^2 + 0.5 * pulse.Ay(t)^2 )
 
+end
+
+
+function pA(t::Float64, θ::Float64, ϕ::Float64, pulse::StrongFieldDynamics.MultiColor, p_electron::ContinuumElectron)
+    p_electron.p * sin(θ) / sqrt(2) * ( pulse.colors[1].A₀ * pulse.colors[1].f(t) * cos(-ϕ + pulse.colors[1].ω * t + pulse.colors[1].cep) +
+                                        pulse.colors[2].A₀ * pulse.colors[2].f(t) * cos( ϕ + pulse.colors[2].ω * t + pulse.colors[2].cep) )
+end
+
+
+function squareA(t::Float64, pulse::MultiColor)
+    term1 = 0.5 * (pulse.colors[1].A₀^2 * pulse.colors[1].f(t)^2 + pulse.colors[2].A₀^2 * pulse.colors[2].f(t)^2)
+    costerm = (pulse.colors[1].ω + pulse.colors[2].ω) * t + (pulse.colors[1].cep + pulse.colors[2].cep)
+    term2 = pulse.colors[1].A₀ * pulse.colors[1].f(t) * pulse.colors[2].A₀ * pulse.colors[2].f(t) * cos(costerm)
+
+    return term1 + term2
 end
 
 
@@ -212,7 +248,7 @@ end
 =======================================================================================================================#
 
 """
-    F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64 ; sign=1)
+    F1_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
 
 
 """
@@ -247,6 +283,24 @@ function F2_integral_quadgk(pulse::Pulse, a_electron::AtomicElectron, p_electron
     return quadgk(integrand, 0.0, pulse.Tp, maxevals=10^5)[1]
 end
 
+
+"""
+    F1_integral_quadgk(color::Pulse, pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+
+"""
+function F1_integral_quadgk(color::Pulse, pulse::MultiColor, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64 ; sign=1)
+
+    # integrand(t) = pulse.f(t) * exp(-im*(a_electron.ε + sign*pulse.ω)*t + im*sin2Sv_quad(t, θ, ϕ, pulse, p_electron))
+    # res, _ = quadgk(integrand, 0.0, pulse.Tp, maxevals=10^1)
+    integrand_real(t) = color.f(t) * cos(-(a_electron.ε + sign*color.ω)*t + StrongFieldDynamics.Sv_general_cartesian(t, θ, ϕ, pulse, p_electron))
+    integrand_imag(t) = color.f(t) * sin(-(a_electron.ε + sign*color.ω)*t + StrongFieldDynamics.Sv_general_cartesian(t, θ, ϕ, pulse, p_electron))
+    real_part, _ = quadgk(integrand_real, 0.0, color.Tp, maxevals=10^5)
+    imag_part, _ = quadgk(integrand_imag, 0.0, color.Tp, maxevals=10^5)
+
+    return color.A₀ * exp(-im * sign * color.cep) * (real_part + im * imag_part)
+    # return pulse.A₀ * exp(-im * sign * pulse.cep) * res
+end
 
 
 #=============================================== From JAC ==========================================================#
