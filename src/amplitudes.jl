@@ -39,7 +39,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; term3 = zero(ComplexF64) ;
 
     # Evaluation for term1 and term2
-    for lp in 0:2
+    for lp in max(0, l-1) : l+1
         for jp in abs(lp - 1//2):(lp + 1//2)
             # reduced matrix element
             p_partialwave = compute_partial_wave(lp, jp, p_electron, a_electron)
