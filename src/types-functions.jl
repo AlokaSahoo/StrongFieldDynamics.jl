@@ -187,9 +187,15 @@ struct Pulse
 
         # Calculate the polarization vector components in spherical basis
         # u-1, u0, u+1 components
+        #------------------ Birger's part ----------------------#
         up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
         u0 = 0.0
         um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
+        #------------------My corrctions  ----------------------#
+        # up = -1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
+        # u0 = 0.0
+        # um = 1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
+        #
         u = OffsetVector([um, u0, up], -1:1)
 
         new(I_au, A₀, λ_au, ω, cycles, Tp, Up, f, float(cep), helicity, ϵ, u, Sv, pulse_duration)
@@ -677,9 +683,6 @@ println("Position: (", point.x, ", ", point.y, ", ", point.z, ")")
 r, θ, ϕ = 2.0, π/4, π/6
 cartesian_point = spherical2cartesian(r, θ, ϕ)
 ```
-
-# See Also
-- [`spherical2cartesian`](@ref): Convert spherical to Cartesian coordinates
 """
 struct Cartesian
     x::Number
@@ -717,9 +720,6 @@ cart = spherical2cartesian(r, θ, ϕ)
 r, θ, ϕ = 2.0, π/4, π/3
 cart = spherical2cartesian(r, θ, ϕ)
 # Returns: Cartesian(0.707..., 1.224..., 1.414...)
-
-# See Also
-- [`Cartesian`](@ref): The returned coordinate structure
 """
 function spherical2cartesian(r::Float64, θ::Float64, ϕ::Float64)
     x = r * sin(θ) * cos(ϕ)

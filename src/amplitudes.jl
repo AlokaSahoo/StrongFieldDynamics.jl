@@ -39,7 +39,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; term3 = zero(ComplexF64) ;
 
     # Evaluation for term1 and term2
-    for lp in 0:lp_max
+    for lp in 0:2
         for jp in abs(lp - 1//2):(lp + 1//2)
             # reduced matrix element
             p_partialwave = compute_partial_wave(lp, jp, p_electron, a_electron)
@@ -73,6 +73,9 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
     end
     term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
     term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+    #
+    # term1 = term1 * (-im / sqrt(2 * pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    # term2 = term2 * (-im / sqrt(2 * pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # Total result
     return term1 + term2 + term3
@@ -102,7 +105,7 @@ function matrix_element(p_partialwave::PartialWave, a_electron::AtomicElectron, 
     l  = a_electron.l    ;    j  = a_electron.j
 
     # Placeholder for the inner matrix element <εp lp || p || n l>
-    prefactor = (-im)^(lp+1) * (- sqrt(2*lp + 1) ) * ClebschGordan(lp, 0, 1, 0, l, 0) 
+    prefactor = (-im)^(lp+1) * (- sqrt(2*lp + 1) ) * ClebschGordan(lp, 0, 1, 0, l, 0) * exp(-im * (p_partialwave.δ))
 
     # To further skip calculations if prefactor is zero
     if prefactor == zero(ComplexF64) return zero(ComplexF64) end
@@ -160,6 +163,8 @@ between a continuum electron partial wave and an atomic (bound) electron state.
 - Refer page 169 - 172 Atomic Structure theory by W R Johnson
 """
 function matrix_element_2(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
+    # look if you are missing the im^lp
+    # * (-im)^lp
 
     lp = p_partialwave.l ;    jp = p_partialwave.j
     l  = a_electron.l    ;    j  = a_electron.j
@@ -173,7 +178,7 @@ function matrix_element_2(p_partialwave::PartialWave, a_electron::AtomicElectron
     end
     # C_reduced = (-1)^(lp) * sqrt((2*lp+1)*(2*l+1)) * wigner3j(lp, 1, l, 0, 0, 0)
 
-    prefactor = im * (p_partialwave.ε - a_electron.ε) * C_reduced
+    prefactor = im * (p_partialwave.ε - a_electron.ε) * C_reduced # * (-im)^lp
 
     # Continuum electron partial waves radial part
     cP = Dierckx.Spline1D(r, p_partialwave.P)
@@ -241,7 +246,7 @@ function inner_product(p_partialwave::PartialWave, a_electron::AtomicElectron, r
     result = quadgk(r -> cP(r) * aP(r), r[1], r[end])[1]
 
     # Apply the angular momentum phase factor (-i)^l_p
-    result = result * (-im)^(p_partialwave.l)
+    result = result * (-im)^(p_partialwave.l) * exp(-im * (p_partialwave.δ))
 
     return result
 end
