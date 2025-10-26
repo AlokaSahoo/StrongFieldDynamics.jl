@@ -1,20 +1,7 @@
-"""
-# Electron Wavefunction Module
-
-This module provides functions for computing atomic and continuum electron wavefunctions
-used in strong field dynamics calculations. It supports:
-
-- Atomic bound state wavefunctions for various elements (Li, Ne, Ar, Kr, Xe)
-- Continuum electron wavefunctions (free and distorted waves)
-- Partial wave computations for photoionization processes
-
-The module interfaces with Fortran libraries for distorted wave calculations and uses
-pre-computed atomic data files for accurate bound state representations.
-"""
-
 using Dierckx
 using SpecialFunctions
 using DelimitedFiles
+import JenaAtomicCalculator: AsfSettings, Basics, Configuration, Continuum, Nuclear, Radial, SelfConsistent
 
 # Path to the Fortran shared object library for distorted partial waves
 dir = @__DIR__
@@ -22,47 +9,73 @@ freeSchrodinger = dir*"/../deps/mod_sfree.so"
 
 
 """
-    compute_atomic_electron(Z::Int64, n::Int64, l::Int64; ip::Float64=0.0) → AtomicElectron
+    compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64=0.0) -> AtomicElectron
 
-Computes the atomic electron wavefunction for specified quantum numbers.
+Computes the atomic electron wavefunction for specified atomic number and ionization scheme.
 
 # Arguments
 - `Z::Int64`: Atomic number (nuclear charge)
-- `n::Int64`: Principal quantum number 
-- `l::Int64`: Orbital angular momentum quantum number
+- `scheme::IonizationScheme`: Ionization scheme (`Atomic` or `Hydrogenic`)
+
+# Keyword Arguments
 - `ip::Float64=0.0`: Ionization potential in atomic units (Hartree). If 0.0, uses default values.
 
 # Returns
 - `AtomicElectron`: Structure containing the radial wavefunction and quantum numbers
 
-# Supported Atoms and Orbitals
-- **Lithium (Z=3)**: 1s, 2s orbitals
-- **Neon (Z=10)**: 1s, 2p orbitals  
-- **Argon (Z=18)**: 1s, 3p orbitals
-- **Krypton (Z=36)**: 1s, 4p orbitals
-- **Xenon (Z=54)**: 1s, 5p orbitals
+# Ionization Schemes
+
+## `Atomic` Scheme
+Uses pre-computed Hartree-Fock or Dirac-Fock wavefunctions from data files.
+
+**Supported Atoms:**
+- **Hydrogen (Z=1)**: 1s orbital, IP = 0.5 a.u. (13.6 eV)
+- **Lithium (Z=3)**: 2s orbital, IP = 0.198 a.u. (5.3917 eV)
+- **Neon (Z=10)**: 2p orbital, IP = 0.792 a.u. (21.5645 eV)
+- **Argon (Z=18)**: 3p orbital, IP = 0.579 a.u. (15.7596 eV)
+- **Krypton (Z=36)**: 4p orbital, IP = 0.514 a.u. (13.9996 eV)
+- **Xenon (Z=54)**: 5p orbital, IP = 0.446 a.u. (12.1298 eV)
+
+## `Hydrogenic` Scheme
+Uses hydrogenic wavefunctions with the form:
+```
+P(r) = 2^(5/2) * IP^(3/2) * r * exp(-√(2*IP)*r)
+```
+Quantum numbers are set to n=1, l=0, j=1/2.
 
 # Physics
-The function loads pre-computed Hartree-Fock or Dirac-Fock wavefunctions from data files.
-These represent accurate many-electron atomic wavefunctions that account for electron 
-correlation and relativistic effects where applicable.
+- **Atomic scheme**: Loads accurate many-electron wavefunctions that account for electron 
+  correlation and relativistic effects
+- **Hydrogenic scheme**: Simple hydrogen-like approximation suitable for quick calculations
+- Radial grid is either from data files (Atomic) or the global `grid` constant (Hydrogenic)
 
 # Examples
 ```julia
-# Lithium 2s electron
-li_2s = compute_atomic_electron(3, 2, 0)
+# Argon 3p electron with atomic scheme
+ar_3p = compute_atomic_electron(18, Atomic)
 
 # Neon 2p electron with custom ionization potential
-ne_2p = compute_atomic_electron(10, 2, 1; ip=0.8)  # 0.8 Hartree
+ne_2p = compute_atomic_electron(10, Atomic; ip=0.8)  # 0.8 Hartree
 
-# Argon 3p electron
-ar_3p = compute_atomic_electron(18, 3, 1)
+# Hydrogenic approximation for quick calculations
+h_approx = compute_atomic_electron(18, Hydrogenic; ip=0.6)
 ```
 
 # Notes
-- Ionization potentials are converted from eV to atomic units (÷27.21138)
 - Data files contain radial positions and corresponding wavefunction values
-- Interpolation is performed to ensure smooth wavefunction representation
+- Interpolation using cubic splines ensures smooth wavefunction representation
+- The `rV` field in returned `AtomicElectron` is initialized to zeros for this method
+- Default ionization potentials are experimental values from NIST
+
+# Errors
+Throws an error if:
+- Atomic number Z is not supported for `Atomic` scheme
+- Supported Z values: 1, 3, 10, 18, 36, 54
+
+# See Also
+- [`compute_atomic_electron(Z, initial_configuration, final_configuration)`](@ref StrongFieldDynamics.compute_atomic_electron): JAC-based calculation
+- [`compute_potential`](@ref StrongFieldDynamics.compute_potential): Computes ionic potentials
+- [`AtomicElectron`](@ref StrongFieldDynamics.AtomicElectron): Return type structure
 """
 function compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64=0.0)
 
@@ -128,12 +141,13 @@ function compute_atomic_electron(Z::Int64, scheme::IonizationScheme; ip::Float64
         P = itp.(r_)
 
     elseif scheme == Hydrogenic
+        r_ = grid.r
         n = 1 ; l = 0 ;
         j  = 1//2 ;
         P = hydrogenic.(r_, ip)
     end
 
-    return AtomicElectron(Z, n, l, j, (-ip), r_, P)
+    return AtomicElectron(Z, n, l, j, (-ip), r_, P, zeros(length(r_)))
 end
 
 
@@ -188,7 +202,7 @@ Potentials are loaded from pre-computed data files:
 
 # Notes
 - The potential is interpolated onto the atomic electron's radial grid using spline interpolation
-- Data files contain r*V(r) values which are converted to V(r) by dividing by r
+- Data files contain r*V(r) values which are converted to V(r) by dividing with r
 - Units are atomic units (Hartree for energy, Bohr radius for distance)
 - The potential includes relativistic effects for heavier atoms
 
@@ -197,9 +211,9 @@ Throws an error if the atomic number Z is not supported. Currently supports
 Z = 3, 10, 18, 36, 54 corresponding to Li, Ne, Ar, Kr, Xe respectively.
 
 # See Also
-- [`compute_atomic_electron`](@ref): Computes the initial bound state
-- [`distorted_electron`](@ref): Uses this potential for continuum wavefunctions
-- [`compute_partial_wave`](@ref): Higher-level interface for partial wave calculations
+- [`compute_atomic_electron`](@ref StrongFieldDynamics.compute_atomic_electron): Computes the initial bound state
+- [`distorted_electron`](@ref StrongFieldDynamics.distorted_electron): Uses this potential for continuum wavefunctions
+- [`compute_partial_wave`](@ref StrongFieldDynamics.compute_partial_wave): Higher-level interface for partial wave calculations
 """
 function compute_potential(a_electron::AtomicElectron)
     if a_electron.Z == 1
@@ -234,39 +248,173 @@ end
 
 
 """
-    bessel_electron(ε::Float64, l::Int64, r::Vector{Float64}) → (Vector{Float64}, Vector{Float64}, Float64)
+    compute_atomic_electron(Z::Number, initial_configuration::String, final_configuration::String) -> AtomicElectron
+
+Computes the atomic electron wavefunction using JAC self-consistent field calculations.
+
+# Arguments
+- `Z::Number`: Atomic number (nuclear charge). Can be modified internally for nuclear model.
+- `initial_configuration::String`: Initial electronic configuration in spectroscopic notation
+- `final_configuration::String`: Final electronic configuration after ionization
+
+# Returns
+- `AtomicElectron`: Structure containing the radial wavefunction, quantum numbers, and ionic potential
+
+# Nuclear Model
+Uses Fermi nuclear charge distribution with corrected nuclear charges to match the JAC computed ionization:
+- Z=10 (Ne): newZ = 10.0862
+- Z=18 (Ar): newZ = 18.0801
+- Z=36 (Kr): newZ = 36.0865
+- Z=54 (Xe): newZ = 54.0936
+
+# Configuration Format
+Electronic configurations follow standard spectroscopic notation:
+- Subshell format: `nl^occupation` (e.g., `1s^2`, `2p^6`, `3d^10`)
+- Noble gas core: `[Ne]`, `[Ar]`, `[Kr]`, `[Xe]`
+- Full configuration: `1s^2 2s^2 2p^6 3s^2 3p^6` or `[Ne] 3s^2 3p^6`
+
+# Calculation Process
+1. Constructs Fermi nuclear model with corrected charge
+2. Performs self-consistent field (SCF) calculations for initial and final states
+3. Identifies the ionized subshell by comparing occupation numbers
+4. Extracts quantum numbers (n, l, j) from the ionized subshell
+5. Computes ionization potential: IP = E_final - E_initial
+6. Calculates effective ionic potential (nuclear + DFS field)
+
+# Physics
+- Uses relativistic Dirac-Fock-Slater (DFS) formalism
+- Includes electron correlation and exchange effects
+- Computes accurate ionic potential for distorted wave calculations
+- Ionization potential calculated from energy difference of multiplets
+
+# Examples
+```julia
+# Argon ionization: [Ne] 3s^2 3p^6 → [Ne] 3s^2 3p^5
+ar_electron = compute_atomic_electron(18, "[Ne] 3s^2 3p^6", "[Ne] 3s^2 3p^5")
+
+# Krypton with full configuration
+kr_electron = compute_atomic_electron(36, 
+                                     "[Ar] 3d^10 4s^2 4p^6",
+                                     "[Ar] 3d^10 4s^2 4p^5")
+
+# Xenon ionization
+xe_electron = compute_atomic_electron(54,
+                                     "[Kr] 4d^10 5s^2 5p^6",
+                                     "[Kr] 4d^10 5s^2 5p^5")
+```
+
+# Notes
+- Uses the global `grid` constant for radial mesh
+- Radial wavefunction length may be shorter than grid due to orbital extent
+- The `rV` field contains r*V(r) where V is the effective ionic potential
+- Ionization potential is stored as negative value (binding energy)
+
+# Performance
+- SCF calculations can be computationally intensive for heavy atoms
+- Results are more accurate than data file methods for complex configurations
+- Suitable for atoms not covered by pre-computed data files
+
+# See Also
+- [`compute_atomic_electron(Z, scheme)`](@ref StrongFieldDynamics.compute_atomic_electron): Data file-based calculation
+- [`AtomicElectron`](@ref StrongFieldDynamics.AtomicElectron): Return type structure
+- [`compute_potential`](@ref StrongFieldDynamics.compute_potential): Alternative potential calculation
+"""
+function compute_atomic_electron(Z::Number, initial_configuration::String, final_configuration::String)
+
+    # Nuclear model
+    if Z == 10 newZ = 10.0862 end
+    if Z == 18 newZ = 18.0801 end
+    if Z == 36 newZ = 36.0865 end
+    if Z == 54 newZ = 54.0936 end
+    nucModel   = Nuclear.Model(newZ, "Fermi") 
+
+    # Defining radial grid 
+    # grid = Radial.Grid(Radial.Grid(false), rnt = 4.0e-6, h = 5.0e-2, hp = 5.0e-2, rbox = 30.0)  
+    # global grid
+
+    iMultiplet = SelfConsistent.performSCF([ Configuration(initial_configuration)], nucModel, grid, AsfSettings());
+    fMultiplet = SelfConsistent.performSCF([ Configuration(final_configuration)], nucModel, grid, AsfSettings());
+
+    iLevel = iMultiplet.levels[1];    fLevel = fMultiplet.levels[1] ;
+    ip = (fLevel.energy - iLevel.energy)    ;
+
+    println("Computed ionization energy is $(ip * 27.21138) eV")
+
+    _, sl = findmax(iLevel.basis.csfs[1].occupation .- fLevel.basis.csfs[1].occupation) ;
+    subshell    = iLevel.basis.subshells[sl]  ;     orb = iLevel.basis.orbitals[subshell]  ;
+
+    n = subshell.n  ;
+    l = Basics.subshell_l(subshell)    ;
+    j = Basics.subshell_j(subshell).num // Basics.subshell_j(subshell).den    ;
+    P = orb.P
+    npoints = size(P)[1]
+    r = grid.r[1:npoints]
+
+    # Computing potential
+    nuclearPotential  = Nuclear.nuclearPotential(nucModel, grid)
+    wp  = Basics.computePotential(Basics.DFSField(1.0), grid, fLevel) 
+    pot = Basics.add(nuclearPotential, wp)
+
+    return AtomicElectron(Int64(round(Z)), n, l, j, (-ip), r, P, pot.Zr)    
+
+end
+
+
+"""
+    free_electron(ε::Float64, l::Int64, r::Vector{Float64}) -> (Vector{Float64}, Vector{Float64}, Float64)
 
 Computes the free electron continuum wavefunction using spherical Bessel functions.
 
 # Arguments
-- `ε::Float64`: Kinetic energy of the free electron (in atomic units)
+- `ε::Float64`: Kinetic energy of the free electron (atomic units)
 - `l::Int64`: Orbital angular momentum quantum number
-- `r::Vector{Float64}`: Radial grid points (in bohr)
+- `r::Vector{Float64}`: Radial grid points (Bohr radii)
 
 # Returns
-- `r::Vector{Float64}`: Input radial grid
-- `P::Vector{Float64}`: Radial wavefunction P(r) = r * jₗ(pr)
+A tuple containing:
+- `r::Vector{Float64}`: Input radial grid (unchanged)
+- `P::Vector{Float64}`: Radial wavefunction P(r) = r·jₗ(pr)
 - `δ::Float64`: Phase shift (always 0.0 for free electrons)
 
 # Physics
-For a free electron in the absence of any potential, the radial wavefunction is:
+For a free electron in the absence of any potential (V(r) = 0), the radial wavefunction is:
 ```
-P(r) = r * jₗ(pr)
+P(r) = r·jₗ(pr)
 ```
-where jₗ is the spherical Bessel function of order l, and p = √(2ε) is the momentum.
+where:
+- jₗ is the spherical Bessel function of order l
+- p = √(2ε) is the electron momentum (atomic units)
+- The factor r converts from reduced radial function u(r) to P(r)
 
 This represents the exact solution to the Schrödinger equation with V(r) = 0.
 
-# Example
+# Examples
 ```julia
-r_grid = range(0.1, 50.0, 500)
-energy = 1.0  # 1 Hartree kinetic energy
-l = 1  # p-wave
+# Generate radial grid
+r_grid = range(0.1, 50.0, length=500) |> collect
 
-r, P, phase = bessel_electron(energy, l, r_grid)
+# Compute s-wave (l=0) at 1 Hartree
+energy = 1.0
+r, P_s, δ = free_electron(energy, 0, r_grid)
+
+# Compute p-wave (l=1) at 0.5 Hartree
+r, P_p, δ = free_electron(0.5, 1, r_grid)
+
+# Higher angular momentum
+r, P_d, δ = free_electron(2.0, 2, r_grid)  # d-wave
 ```
+
+# Notes
+- Phase shift is always zero (δ = 0.0) for free electrons
+- No atomic potential effects included
+- Valid for all positive energies and non-negative l values
+
+# See Also
+- [`distorted_electron`](@ref StrongFieldDynamics.distorted_electron): Includes atomic potential
+- [`distorted_electron_jac`](@ref StrongFieldDynamics.distorted_electron_jac): JAC-based distorted waves
+- [`compute_partial_wave`](@ref StrongFieldDynamics.compute_partial_wave): High-level interface
 """
-function bessel_electron(ε::Float64, l::Int64, r::Vector{Float64})
+function free_electron(ε::Float64, l::Int64, r::Vector{Float64})
     # Linear momentum of the electron: p = √(2mε) with m=1 in atomic units
     p = sqrt(2ε)    
 
@@ -281,18 +429,19 @@ end
 """
     distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64}) → (Vector{Float64}, Vector{Float64}, Float64)
 
-Computes the distorted wave continuum electron wavefunction in an atomic potential.
+Computes the distorted wave continuum electron wavefunction in an atomic potential using Fortran integration.
 
 # Arguments
-- `ε::Float64`: Kinetic energy of the electron (in atomic units)
+- `ε::Float64`: Kinetic energy of the electron (atomic units)
 - `l::Int64`: Orbital angular momentum quantum number  
-- `r::Vector{Float64}`: Radial grid points (in bohr)
-- `rV::Vector{Float64}`: Potential energy array V(r) at grid points (in atomic units)
+- `r::Vector{Float64}`: Radial grid points (Bohr radii)
+- `rV::Vector{Float64}`: Potential energy array r·V(r) at grid points (atomic units)
 
 # Returns
-- `r::Vector{Float64}`: Input radial grid
+A tuple containing:
+- `r::Vector{Float64}`: Input radial grid (unchanged)
 - `P::Vector{Float64}`: Normalized radial wavefunction P(r)
-- `δ::Float64`: Total phase shift (inner + Coulomb contributions)
+- `δ::Float64`: Total phase shift (inner + Coulomb contributions, radians)
 
 # Physics
 Solves the radial Schrödinger equation with the given potential:
@@ -304,23 +453,47 @@ The wavefunction asymptotically behaves as:
 ```
 P(r) → sin(pr - lπ/2 + δₗ) / p    as r → ∞
 ```
+where δₗ is the total scattering phase shift.
 
-This accounts for scattering from the atomic potential, providing more accurate
-wavefunctions for photoionization calculations than free electron approximations.
+# Phase Shift Decomposition
+The function computes two phase shift contributions:
+- **Inner phase shift**: From short-range atomic potential
+- **Coulomb phase shift**: From long-range Coulomb tail
 
-# Implementation
-Uses a Fortran library (mod_sfree.so) for numerical integration of the 
-radial Schrödinger equation with proper boundary conditions.
+Total phase shift: δ_total = δ_inner + δ_Coulomb
 
-# Example  
+# Implementation Details
+- Uses Fortran library `mod_sfree.so` via `ccall`
+- Numerical integration with proper boundary conditions
+- Normalization: P(r) → P(r)/p for unit amplitude
+
+
+# Examples
 ```julia
-r_grid = range(0.1, 50.0, 500)
-V_coulomb = -2.0 ./ r_grid  # Hydrogen-like potential
-energy = 0.5  # 0.5 Hartree kinetic energy
+# Hydrogen-like potential
+r_grid = range(0.1, 50.0, length=500) |> collect
+V_coulomb = -2.0 ./ r_grid  # r·V(r) for Z=1
+rV = r_grid .* V_coulomb
 
-r, P, delta = distorted_electron(energy, 0, r_grid, V_coulomb)
+# Compute s-wave at 0.5 Hartree
+r, P, delta = distorted_electron(0.5, 0, r_grid, rV)
 println("s-wave phase shift: ", delta, " radians")
+
+# With atomic potential from data
+atom = compute_atomic_electron(18, Atomic)
+V_ion = compute_potential(atom)
+r, P, delta = distorted_electron(1.0, 1, atom.r, V_ion)
 ```
+
+# Errors
+- Fortran library must be compiled and available at `mod_sfree.so`
+- Array dimension mismatches handled by oversized buffers
+- Convergence depends on potential and energy
+
+# See Also
+- [`free_electron`](@ref StrongFieldDynamics.free_electron): No potential case
+- [`distorted_electron_jac`](@ref StrongFieldDynamics.distorted_electron_jac): JAC-based alternative
+- [`compute_potential`](@ref StrongFieldDynamics.compute_potential): Generates ionic potentials
 """
 function distorted_electron(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64})
 
@@ -354,51 +527,162 @@ end
 
 
 """
-    compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron) → PartialWave
+    distorted_electron_jac(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64}) -> (Vector{Float64}, Vector{Float64}, Float64)
+
+Computes the distorted wave continuum electron wavefunction using JAC (Jena Atomic Calculator) methods.
+
+# Arguments
+- `ε::Float64`: Kinetic energy of the electron (atomic units)
+- `l::Int64`: Orbital angular momentum quantum number  
+- `r::Vector{Float64}`: Radial grid points (Bohr radii) - not directly used, length determines settings
+- `rV::Vector{Float64}`: Potential energy array r·V(r) at grid points (atomic units)
+
+# Returns
+A tuple containing:
+- `r::Vector{Float64}`: Input radial grid (unchanged)
+- `P::Vector{Float64}`: Normalized radial wavefunction P(r) from continuum orbital
+- `δ::Float64`: Scattering phase shift (radians)
+
+# Physics
+Uses JAC's Galerkin method to solve the radial Dirac equation in the potential:
+- Includes relativistic effects via Dirac formalism
+- Proper asymptotic normalization for continuum states
+- Phase shift extracted from asymptotic behavior
+
+# Subshell Convention
+Converts orbital angular momentum to JAC subshell notation:
+- l = 0 → κ = -1 (s₁/₂)
+- l > 0 → κ = l (p₃/₂, d₅/₂, etc.)
+
+This determines the relativistic quantum number κ and total angular momentum j.
+
+# Implementation Details
+Uses global `grid` constant for radial mesh:
+```julia
+grid = Radial.Grid(Radial.Grid(false), rnt=4.0e-6, h=5.0e-2, hp=5.0e-2, rbox=30.0)
+```
+
+# Examples
+```julia
+# With JAC-computed atomic structure
+atom = compute_atomic_electron(18, "[Ne] 3s^2 3p^6", "[Ne] 3s^2 3p^5")
+
+# Compute distorted wave
+energy = 1.0  # 1 Hartree
+l = 1  # p-wave
+r, P, delta = distorted_electron_jac(energy, l, atom.r, atom.rV)
+
+# Use in photoionization calculation
+continuum = ContinuumElectron(energy, sqrt(2*energy), DistortedWave)
+partial_wave = compute_partial_wave(l, 3//2, continuum, atom)
+```
+
+# See Also
+- [`distorted_electron`](@ref StrongFieldDynamics.distorted_electron): Fortran-based method
+- [`compute_atomic_electron(Z, initial, final)`](@ref StrongFieldDynamics.compute_atomic_electron): Generates compatible potentials
+- [`compute_partial_wave`](@ref StrongFieldDynamics.compute_partial_wave): Uses this for distorted waves
+"""
+function distorted_electron_jac(ε::Float64, l::Int64, r::Vector{Float64}, rV::Vector{Float64})
+
+    # global grid
+
+    sh  = if l == 0 
+        Basics.Subshell(101, -1) 
+    else
+        Basics.Subshell(101, l)
+    end
+
+    pot = Radial.Potential("JAC", rV, grid)
+    cSettings = Continuum.Settings(false, length(r))
+
+    orbital = Continuum.generateOrbitalGalerkin(ε, sh, pot, cSettings)
+    cOrbital, phase = Continuum.normalizeOrbitalAlok(orbital, pot, cSettings)
+
+    return r, cOrbital.P, phase  # Return normalized P(r) and total phase
+end
+
+
+"""
+    compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron) -> PartialWave
 
 Computes a partial wave for photoionization calculations.
 
 # Arguments
 - `l::Int64`: Orbital angular momentum quantum number
 - `j::Rational{Int64}`: Total angular momentum quantum number (j = l ± 1/2)
-- `p_electron::ContinuumElectron`: Continuum electron specification (energy, solution type)
-- `a_electron::AtomicElectron`: Bound atomic electron data
+- `p_electron::ContinuumElectron`: Continuum electron specification (energy, momentum, solution type)
+- `a_electron::AtomicElectron`: Bound atomic electron data (radial grid, potential)
 
 # Returns
 - `PartialWave`: Structure containing energy, quantum numbers, wavefunction, and phase shift
 
+# Solution Methods
+
+## `PlaneWave` Solution
+Uses free electron wavefunctions (spherical Bessel functions):
+- Fast computation
+- No atomic potential effects
+- Phase shift δ = 0.0
+
+## `DistortedWave` Solution  
+Uses distorted wave method with atomic potential:
+- Includes scattering from ionic potential
+- More accurate for photoionization
+- Non-zero phase shifts
+- Uses JAC method (`distorted_electron_jac`)
+
 # Physics
-Computes the continuum electron partial wave corresponding to the photoionization
-transition from the bound atomic orbital. The choice of solution method (Bessel vs 
-Distorted) affects the accuracy:
+Computes the continuum electron partial wave corresponding to the
+transition from the bound atomic orbital. 
 
-- **Bessel**: Free electron approximation, ignores atomic potential
-- **Distorted**: Includes scattering from atomic potential (more accurate)
+The choice of solution method affects accuracy:
+- **PlaneWave**: Ignores atomic potential, assumes plane wave at infinity
+- **DistortedWave**: Accounts for long-range Coulomb and exchange potentials
 
-# Example
+# Radial Grid
+- Uses the radial grid from `a_electron.r`
+- Grid should extend to asymptotic region for accurate phase shifts
+
+# Examples
 ```julia
-# Set up bound and continuum electrons
-atom = compute_atomic_electron(18, 3, 1)  # Ar 3p
-continuum = ContinuumElectron(1.0, :Distorted)  # 1 Hartree, distorted wave
+# Set up bound electron
+atom = compute_atomic_electron(18, Atomic)  # Ar 3p
 
-# Compute p-wave (l=1) partial wave
-partial_wave = compute_partial_wave(1, 3//2, continuum, atom)
+# Plane wave partial wave (SFA)
+continuum_plane = ContinuumElectron(1.0, sqrt(2.0), PlaneWave)
+pw_plane = compute_partial_wave(1, 3//2, continuum_plane, atom)
+
+# Distorted wave partial wave (accurate)
+continuum_dist = ContinuumElectron(1.0, sqrt(2.0), DistortedWave)
+pw_dist = compute_partial_wave(1, 3//2, continuum_dist, atom)
+
+# Compare phase shifts
+println("Plane wave phase shift: ", pw_plane.δ)      # Should be 0.0
+println("Distorted phase shift: ", pw_dist.δ)  # Non-zero
 ```
 
-# Notes
-- The radial grid from the atomic electron is used for the continuum calculation
-- Phase shifts are important for interference effects in photoionization
-- Distorted waves require the atomic potential (currently needs rV to be defined)
+# Error Handling
+Throws error if:
+- `p_electron.solution` is not `PlaneWave` or `DistortedWave`
+- `a_electron.rV` is empty/invalid for distorted waves
+
+# See Also
+- [`ContinuumElectron`](@ref StrongFieldDynamics.ContinuumElectron): Continuum electron structure
+- [`AtomicElectron`](@ref StrongFieldDynamics.AtomicElectron): Bound electron structure
+- [`PartialWave`](@ref StrongFieldDynamics.PartialWave): Return type structure
+- [`free_electron`](@ref StrongFieldDynamics.free_electron): Plane wave implementation
+- [`distorted_electron_jac`](@ref StrongFieldDynamics.distorted_electron_jac): Distorted wave implementation
 """
 function compute_partial_wave(l::Int64, j::Rational{Int64}, p_electron::ContinuumElectron, a_electron::AtomicElectron)
     P = zeros(Float64, length(a_electron.r))  ; δ = 0.0
 
-    if p_electron.solution == Bessel
-        r, P, δ = bessel_electron(p_electron.ε, l, a_electron.r)
-    elseif p_electron.solution == Distorted
+    if p_electron.solution == PlaneWave
+        r, P, δ = free_electron(p_electron.ε, l, a_electron.r)
+    elseif p_electron.solution == DistortedWave
         # Note: rV needs to be defined in the calling scope or passed as parameter
-        rV = compute_potential(a_electron)
-        r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
+        # rV = compute_potential(a_electron)
+        # r, P, δ = distorted_electron(p_electron.ε, l, a_electron.r, rV)
+        r, P, δ = distorted_electron_jac(p_electron.ε, l, a_electron.r, a_electron.rV)
     else
         @error "$(p_electron.solution) - not implemented yet"
     end

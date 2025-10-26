@@ -1,22 +1,27 @@
 using Base.Threads
 using Distributed
+using Mendeleev
+using OffsetArrays
 using Printf
 using ProgressMeter
-using OffsetArrays
 using SpecialFunctions
 using SphericalHarmonics
 using WignerSymbols
+import JenaAtomicCalculator: Radial
 
 export ClebschGordan, Ylm
 export PulseEnvelope, Sin2, Gaussian, Rectangular
 export Pulse, AtomicElectron, ContinuumElectron, PartialWave, Settings
-export ContinuumSolution, Bessel, Distorted
+export Wavefunction, FromFile, FromJAC
+export ContinuumSolution, PlaneWave, DistortedWave
 export Gauge, VelocityGauge, LengthGauge
 export IonizationScheme, Hydrogenic, Atomic
 export AngularDistribution, EnergyDistribution, MomentumDistribution
 export compute_angular_distribution, compute_energy_distribution, compute_momentum_distribution
 export Cartesian, spherical2cartesian
 
+# Defined grid
+const grid = Radial.Grid(Radial.Grid(false), rnt = 4.0e-6, h = 5.0e-2, hp = 5.0e-2, rbox = 30.0)  
 
 
 """
@@ -204,30 +209,113 @@ end
 
 
 """
+    Wavefunction
+
+Enumeration specifying the source of atomic wavefunctions for strong-field ionization calculations.
+
+# Variants
+- `FromFile`: Use pre-computed atomic wavefunctions from data files
+- `FromJAC`: Generate wavefunctions dynamically using Jena Atomic Calculator (JAC)
+
+## `FromFile`
+Uses pre-computed Hartree-Fock or Dirac-Fock wavefunctions stored in data files computed .
+
+**Available Data:**
+- Hydrogen (Z=1): 1s orbital
+- Lithium (Z=3): 2s orbital
+- Neon (Z=10): 2p orbital
+- Argon (Z=18): 3p orbital
+- Krypton (Z=36): 4p orbital
+- Xenon (Z=54): 5p orbital
+
+## `FromJAC`
+Performs on-the-fly self-consistent field calculations using the Jena Atomic Calculator.
+
+**Requirements:**
+- Electronic configuration strings in standard spectroscopic notation
+- Compatible with both initial and final state specifications
+- Automatically sets `ionization_scheme=Atomic` in Settings
+
+**Advantages:**
+- Flexible electronic configuration specification
+- Relativistic Dirac-Fock calculations for heavy atoms
+- Can model any neutral or ionized atomic state
+- Includes electron correlation effects
+
+# Usage
+```julia
+# Use pre-computed data files (fast)
+settings_file = Settings(wavefunction=FromFile)
+ed1 = compute_energy_distribution(18, pulse; settings=settings_file)
+
+# Use JAC for custom calculations (flexible)
+settings_jac = Settings(wavefunction=FromJAC)
+ed2 = compute_energy_distribution(36, pulse; settings=settings_jac,
+                                 initial_configuration="[Ar] 3d^10 4s^2 4p^6",
+                                 final_configuration="[Ar] 3d^10 4s^2 4p^5")
+
+# JAC with automatic configuration generation
+ed3 = compute_energy_distribution(54, pulse; settings=settings_jac)
+# Automatically generates: "[Kr] 4d^10 5s^2 5p^6" → "[Kr] 4d^10 5s^2 5p^5"
+```
+
+# Electronic Configuration Format
+When using `FromJAC`, configurations follow standard spectroscopic notation:
+- Subshell format: `nl^occupation` (e.g., `1s^2`, `2p^6`, `3d^10`)
+- Noble gas core: `[Ne]`, `[Ar]`, `[Kr]`, `[Xe]`, etc.
+- Full configuration: `1s^2 2s^2 2p^6 3s^2 3p^6` or `[Ne] 3s^2 3p^6`
+
+# Automatic Behavior
+- If `initial_configuration` and `final_configuration` are empty with `FromJAC`:
+  - Automatically generates neutral atom configuration for initial state
+  - Generates singly ionized configuration for final state
+  - Uses `generate_electron_configuration(Z)` function
+
+# Integration with Settings
+The `Settings` constructor automatically enforces consistency:
+```julia
+# This automatically sets ionization_scheme to Atomic
+settings = Settings(wavefunction=FromJAC)
+# Warning: "Switching to Atomic Ionization scheme; As wavefunction is From JAC"
+```
+
+# See Also
+- [`Settings`](@ref StrongFieldDynamics.Settings): Configuration settings structure
+- [`IonizationScheme`](@ref StrongFieldDynamics.IonizationScheme): Bound state calculation methods
+- [`generate_electron_configuration`](@ref StrongFieldDynamics.generate_electron_configuration): Automatic configuration generation
+- [`compute_atomic_electron`](@ref StrongFieldDynamics.compute_atomic_electron): Atomic wavefunction computation
+"""
+@enum Wavefunction begin
+    FromFile
+    FromJAC
+end
+
+
+"""
     ContinuumSolution
 
 Enumeration of different approximations for the continuum electron wavefunction in strong-field ionization calculations.
 
 # Variants
-- `Bessel`
-- `Distorted`
+- `PlaneWave`
+- `DistortedWave`
 
-## `Bessel`
-**Volkov states** - Free electron wavefunction in an oscillating electric field.
+## `PlaneWave`
+**Volkov states** - PlaneWave electron wavefunction in an oscillating electric field.
 
-## `Distorted`
+## `DistortedWave`
 **Distorted waves** - Numerical solution including both Coulomb and laser field effects.
 
 # Usage
 ```julia
 # Create continuum electrons with different wavefunctions
-bessel_electron = ContinuumElectron(1.0, sqrt(2.0), Bessel)       # SFA calculation
-distorted_electron = ContinuumElectron(1.0, sqrt(2.0), Distorted) # Full calculation
+free_electron = ContinuumElectron(1.0, sqrt(2.0), PlaneWave)       # SFA calculation
+distorted_electron = ContinuumElectron(1.0, sqrt(2.0), DistortedWave) # Full calculation
 ```
 """
 @enum ContinuumSolution begin
-    Bessel
-    Distorted
+    PlaneWave
+    DistortedWave
 end
 
 """
@@ -302,6 +390,7 @@ Represents a bound atomic electron with quantum numbers and radial wavefunction.
 - `ε::Float64`: Binding energy (positive value in a.u.)
 - `r::Vector{Float64}`: Radial grid points (a.u.)
 - `P::Vector{Float64}`: Radial wavefunction P(r) = r·R(r)
+- `rV::Vector{Float64}`: 
 """
 struct AtomicElectron
     Z::Int64
@@ -311,6 +400,7 @@ struct AtomicElectron
     ε::Float64
     r::Vector{Float64}
     P::Vector{Float64}
+    rV::Vector{Float64}
 end
 
 
@@ -416,39 +506,104 @@ end
 
 
 """
-    compute_energy_distribution(Z::Int64, pulse::Pulse; settings=Settings(), θ::Real=pi/2, ϕ::Real=0.0,
-                               energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_points::Int64=200) -> EnergyDistribution
+
+    generate_electron_configuration(Z::Int64)::String
+
+
+"""
+function generate_electron_configuration(Z::Int64)::String
+    # Regular expression: r"([a-z])(\d+)"
+    #   \1: Captures the subshell letter (e.g., 'd', 's', 'p')
+    #   \2: Captures the exponent (the number of electrons)
+    #
+    # Replacement: s"\1^\2"
+    #   Uses the backslash notation (\1, \2) to refer to the captured groups.
+
+    config = Mendeleev.chem_elements[Z].electronic_configuration
+
+    return replace(config, r"([a-z])(\d+)" => s"\1^\2")
+end
+
+
+"""
+    compute_energy_distribution(Z::Int64, pulse::Pulse; settings=Settings(), θ::Real=π/2, ϕ::Real=0.0,
+                               energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_points::Int64=200,
+                               initial_configuration::String="", final_configuration::String="") -> EnergyDistribution
 
 Computes the energy-resolved photoelectron spectrum at specified angles using SFA.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
-- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
+
+# Keyword Arguments
+- `settings=Settings()`: Calculation settings (wavefunction source, ionization scheme, continuum solution, gauge)
 - `θ::Real=π/2`: Polar detection angle (radians)
 - `ϕ::Real=0.0`: Azimuthal detection angle (radians)
 - `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
 - `n_points::Int64=200`: Number of energy points
+- `initial_configuration::String=""`: Initial electronic configuration (for JAC calculations)
+- `final_configuration::String=""`: Final electronic configuration (for JAC calculations)
 
 # Returns
 - `EnergyDistribution`: Structure containing energies, spectrum, and pulse parameters
 
-# Example
+# Wavefunction Generation
+The function automatically selects the wavefunction generation method:
+- **FromJAC + Atomic**: Uses JAC self-consistent field calculations with provided configurations
+- **FromFile + Hydrogenic/Atomic**: Uses pre-computed data files
+- If configurations are empty for JAC, automatically generates them using `generate_electron_configuration(Z)`
+
+# Parallelization
+- Uses `pmap` for distributed computing when multiple workers are available
+- Falls back to multithreading with `@threads` for single-node computation
+- Progress tracking with `@showprogress`
+
+# Examples
 ```julia
+# Basic energy spectrum
 pulse = Pulse(I₀=1e14, λ=800, cycles=8)
 ed = compute_energy_distribution(18, pulse; energy_range=(0.0, 2.0), n_points=500)
+
+# With JAC calculations and custom configurations
+settings_jac = Settings(wavefunction=FromJAC, ionization_scheme=Atomic)
+ed_jac = compute_energy_distribution(36, pulse; settings=settings_jac,
+                                    initial_configuration="[Ar] 3d^10 4s^2 4p^6",
+                                    final_configuration="[Ar] 3d^10 4s^2 4p^5")
 ```
+
+# Notes
+- Distributed computation requires multiple workers (`addprocs()`)
+- JAC calculations provide more accurate results for heavy atoms
+- Configuration strings use standard spectroscopic notation
 """
 function compute_energy_distribution(Z::Int64, pulse::Pulse;
                                     settings=Settings(), 
                                     θ::Real=pi/2, ϕ::Real=0.0,
                                     energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
-                                    n_points::Int64=200)
+                                    n_points::Int64=200,
+                                    initial_configuration="", final_configuration="")
 
     energies = range(energy_range[1], energy_range[2], length=n_points) |> collect
     distribution = zeros(Float64, n_points)
     
-    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
+    # Generates atomic electron wave function
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, "[Ar] 3d^10 4s^2 4p^6", "[Ar] 3d^10 4s^2 4p^5")
+    #
+    if settings.wavefunction == FromJAC && settings.ionization_scheme == Atomic
+        if isempty(initial_configuration)
+            initial_configuration = generate_electron_configuration(Z)
+            final_configuration   = generate_electron_configuration(Z - 1)
+        end
+            
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, initial_configuration, final_configuration)
+
+        println("Wavefunctions are generated using JAC with intial $(initial_configuration) and final $(final_configuration)")
+
+    else    #if settings.ionization_scheme == Hydrogenic
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme)
+    end
 
     p_electrons = [StrongFieldDynamics.ContinuumElectron(ep, sqrt(2*ep), settings.continuum_solution) for ep in energies]
     
@@ -473,28 +628,59 @@ end
 
 """
     compute_angular_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy::Float64=1.0,
-                                θ_range::Tuple{Float64,Float64}=(0.0, π), n_θ::Int=50,
-                                ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200) -> AngularDistribution
+                                θ_range::Tuple{Float64,Float64}=(π/2, π/2), n_θ::Int=1,
+                                ϕ_range::Tuple{Float64,Float64}=(0.0, 2π), n_ϕ::Int=200,
+                                initial_configuration::String="", final_configuration::String="") -> AngularDistribution
 
 Computes the angular distribution of photoelectrons at fixed energy using SFA.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
-- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
+
+# Keyword Arguments
+- `settings=Settings()`: Calculation settings (wavefunction source, ionization scheme, continuum solution, gauge)
 - `energy::Float64=1.0`: Fixed photoelectron energy (a.u.)
 - `θ_range::Tuple{Float64,Float64}=(π/2, π/2)`: Polar angle range (radians)
 - `n_θ::Int=1`: Number of polar angle points
 - `ϕ_range::Tuple{Float64,Float64}=(0.0, 2π)`: Azimuthal angle range (radians)
 - `n_ϕ::Int=200`: Number of azimuthal angle points
+- `initial_configuration::String=""`: Initial electronic configuration (for JAC calculations)
+- `final_configuration::String=""`: Final electronic configuration (for JAC calculations)
 
 # Returns
 - `AngularDistribution`: Structure containing angles, distribution, and pulse parameters
 
-# Example
+# Default Behavior
+- Default `θ_range=(π/2, π/2)` with `n_θ=1` computes distribution in the polarization plane
+- For full angular coverage, use `θ_range=(0.0, π)` with appropriate `n_θ`
+- Azimuthal coverage from 0 to 2π captures full rotational symmetry
+
+# Wavefunction Generation
+Same automatic selection as `compute_energy_distribution`:
+- **FromJAC + Atomic**: JAC calculations with provided/generated configurations
+- **FromFile**: Pre-computed data files based on ionization scheme
+
+# Parallelization
+- Distributed computing with `pmap` when multiple workers available
+- Multithreading fallback for single-node computation
+- Linear indexing for efficient 2D grid computation
+
+# Examples
 ```julia
+# Angular distribution in polarization plane (typical case)
 pulse = Pulse(I₀=5e13, λ=800, cycles=6, ϵ=0.5)
-ad = compute_angular_distribution(36, pulse; energy=2.0, θ_range=(0.0, π), n_θ=100, n_ϕ=360)
+ad = compute_angular_distribution(36, pulse; energy=2.0, n_ϕ=360)
+
+# Full angular coverage
+ad_full = compute_angular_distribution(18, pulse; energy=1.0, 
+                                      θ_range=(0.0, π), n_θ=100, n_ϕ=200)
+
+# With custom JAC configurations
+settings_jac = Settings(wavefunction=FromJAC)
+ad_jac = compute_angular_distribution(54, pulse; settings=settings_jac,
+                                     initial_configuration="[Ar] 3d^10 4s^2 4p^6",
+                                     final_configuration="[Ar] 3d^10 4s^2 4p^5")
 ```
 """
 function compute_angular_distribution(Z::Int64, pulse::Pulse;
@@ -503,14 +689,29 @@ function compute_angular_distribution(Z::Int64, pulse::Pulse;
                                      θ_range::Tuple{Float64,Float64}=(π/2, π/2),
                                      n_θ::Int=1,
                                      ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
-                                     n_ϕ::Int=200)
+                                     n_ϕ::Int=200,
+                                    initial_configuration="", final_configuration="")
     
     θs = range(θ_range[1], θ_range[2], length=n_θ) |> collect
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect
     distribution = zeros(Float64, n_θ, n_ϕ)
 
-    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
-    
+    # Generates atomic electron wave function
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, "[Ar] 3d^10 4s^2 4p^6", "[Ar] 3d^10 4s^2 4p^5")
+    #
+    if settings.wavefunction == FromJAC && settings.ionization_scheme == Atomic
+        if isempty(initial_configuration)
+            initial_configuration = generate_electron_configuration(Z)
+            final_configuration   = generate_electron_configuration(Z - 1)
+        end
+            
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, initial_configuration, final_configuration)
+
+    else    #if settings.ionization_scheme == Hydrogenic
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme)
+    end
+
     p_electron = StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution)
 
     if Distributed.nworkers() > 1
@@ -540,38 +741,74 @@ end
 
 
 """
-    compute_momentum_distribution(Z::Int64, pulse::Pulse; settings=Settings(), energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
-                                 n_p::Int=50, n_theta::Int=1, n_phi::Int=50, coupled::Bool=true) -> MomentumDistribution
+    compute_momentum_distribution(Z::Int64, pulse::Pulse; settings=Settings(), 
+                                 energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
+                                 n_theta::Int=1, n_phi::Int=50, coupled::Bool=true,
+                                 initial_configuration::String="", final_configuration::String="") -> MomentumDistribution
 
 Computes the 3D momentum distribution of photoelectrons using SFA in spherical coordinates.
 
 # Arguments
 - `Z::Int64`: Atomic number of the target atom
 - `pulse::Pulse`: Laser pulse parameters
-- `settings=Settings()`: Calculation settings (ionization scheme, continuum solution, gauge)
-- `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range (a.u.)
+
+# Keyword Arguments
+- `settings=Settings()`: Calculation settings (wavefunction source, ionization scheme, continuum solution, gauge)
+- `energy_range::Tuple{Float64,Float64}=(0.0, 0.5)`: Energy range for momentum magnitude (a.u.)
 - `n_p::Int=50`: Number of momentum magnitude points
-- `n_theta::Int=1`: Number of polar angle points (typically 1 for θ=π/2)
+- `n_theta::Int=1`: Number of polar angle points (fixed at θ=π/2 for typical SFA)
 - `n_phi::Int=50`: Number of azimuthal angle points
+- `coupled::Bool=true`: Include interchannel coupling effects
+- `initial_configuration::String=""`: Initial electronic configuration (for JAC calculations)
+- `final_configuration::String=""`: Final electronic configuration (for JAC calculations)
 
 # Returns
-- `MomentumDistribution`: Structure containing momentum grids, 3D distribution, and pulse parameters
+- `MomentumDistribution`: Structure containing momentum grids (p, θ, φ), 3D distribution, and pulse parameters
 
-# Example
+# Physics
+- Momentum magnitude: `p = √(2E)` where E is kinetic energy
+- Default `n_theta=1` with θ=π/2 is standard for SFA calculations in polarization plane
+- `coupled=true` uses full probability calculation; `coupled=false` uses simplified uncoupled version
+
+# Wavefunction Generation
+Same automatic selection as other distribution functions:
+- **FromJAC + Atomic**: JAC calculations with provided/generated configurations
+- **FromFile**: Pre-computed data files based on ionization scheme
+
+# Parallelization
+- Distributed computing optimized for momentum magnitude parallelization
+- Each worker computes full angular distribution for assigned momentum values
+- Efficient memory usage with separate result collection
+
+# Examples
 ```julia
+# Basic momentum distribution
 pulse = Pulse(I₀=2e14, λ=800, cycles=4, helicity=-1)
 md = compute_momentum_distribution(54, pulse; energy_range=(0.0, 5.0), n_p=100, n_phi=200)
+
+# Uncoupled calculation for faster computation
+md_fast = compute_momentum_distribution(18, pulse; energy_range=(0.0, 3.0), 
+                                       n_p=80, n_phi=180, coupled=false)
+
+# With JAC for heavy atoms
+settings_jac = Settings(wavefunction=FromJAC, continuum_solution=DistortedWave)
+md_accurate = compute_momentum_distribution(86, pulse; settings=settings_jac,
+                                           initial_configuration="[Ar] 3d^10 4s^2 4p^6",
+                                           final_configuration="[Ar] 3d^10 4s^2 4p^5")
 ```
 
 # Notes
-- For typical SFA calculations, `n_theta=1` with θ=π/2 is sufficient
-- Higher `n_phi` values provide better angular resolution
-- `coupled=true` includes interchannel coupling effects
+- Energy range maps to momentum via p = √(2E)
+- Higher `n_phi` values provide better angular resolution for asymmetric features
+- Coupled calculations include full quantum interference effects
+- For typical SFA, `n_theta=1` is sufficient; increase for 3D momentum imaging
 """
 function compute_momentum_distribution(Z::Int64, pulse::Pulse;
                                       settings=Settings(), 
                                       energy_range::Tuple{Float64,Float64}=(0.0, 0.5), n_p::Int=50, 
-                                      n_theta::Int=1, n_phi::Int=50, coupled::Bool=true)
+                                      n_theta::Int=1, n_phi::Int=50, coupled::Bool=true,
+                                    initial_configuration="", final_configuration="")
+
     energies = range(energy_range[1], energy_range[2], length=n_p) |> collect
     θs = [float(pi/2)] |> collect
     # θs = range(0.0, π, length=n_theta) |> collect
@@ -581,7 +818,21 @@ function compute_momentum_distribution(Z::Int64, pulse::Pulse;
     local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
     # local_probability_func = StrongFieldDynamics.probability
 
-    a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
+    # Generates atomic electron wave function
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
+    # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, "[Ar] 3d^10 4s^2 4p^6", "[Ar] 3d^10 4s^2 4p^5")
+    #
+    if settings.wavefunction == FromJAC && settings.ionization_scheme == Atomic
+        if isempty(initial_configuration)
+            initial_configuration = generate_electron_configuration(Z)
+            final_configuration   = generate_electron_configuration(Z - 1)
+        end
+            
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, initial_configuration, final_configuration)
+
+    else    #if settings.ionization_scheme == Hydrogenic
+        a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme)
+    end
 
     p_electrons = [ StrongFieldDynamics.ContinuumElectron(energy, sqrt(2*energy), settings.continuum_solution) for energy in energies ]
 
@@ -620,45 +871,79 @@ end
 
 
 """
-    Settings
+    Settings(; wavefunction::Wavefunction=FromFile, ionization_scheme::IonizationScheme=Hydrogenic,
+             continuum_solution::ContinuumSolution=PlaneWave, gauge::Gauge=VelocityGauge)
 
 Configuration settings for strong-field ionization calculations.
 
-# Fields
-- `ionization_scheme::IonizationScheme`: Method for bound state calculation
-- `continuum_solution::ContinuumSolution`: Continuum electron wavefunction approximation
-- `gauge::Gauge`: Electromagnetic gauge choice
+# Keyword Arguments
+- `wavefunction::Wavefunction=FromFile`: Source of atomic wavefunctions
+  - `FromFile`: Use pre-computed data files
+  - `FromJAC`: Use Jena Atomic Calculator for self-consistent field calculations
+- `ionization_scheme::IonizationScheme=Hydrogenic`: Method for bound state calculation
+  - `Hydrogenic`: Hydrogen-like wavefunctions with effective nuclear charge
+  - `Atomic`: Full atomic structure calculation (Hartree-Fock or DFT)
+- `continuum_solution::ContinuumSolution=PlaneWave`: Continuum electron wavefunction approximation
+  - `PlaneWave`: Free electron (Volkov) states
+  - `DistortedWave`: Distorted waves including atomic potential
+- `gauge::Gauge=VelocityGauge`: Electromagnetic gauge choice
+  - `VelocityGauge`: Velocity gauge (implemented)
+  - `LengthGauge`: Length gauge (not yet implemented)
 
-# Constructors
+# Automatic Settings Adjustments
+- When `wavefunction=FromJAC`, automatically sets `ionization_scheme=Atomic` with warning
+- Throws error if `LengthGauge` is selected (not implemented)
+
+# Examples
 ```julia
-# Basic constructor with defaults
-settings = Settings(pulse, 1)
+# Default settings (fast, approximate)
+settings_default = Settings()
 
-# With specific options
-settings = Settings(pulse, 18; 
-                   ionization_scheme=Atomic,
-                   continuum_solution=Distorted,
-                   gauge=VelocityGauge)
+# High accuracy with JAC
+settings_accurate = Settings(wavefunction=FromJAC, continuum_solution=DistortedWave)
+
+# Atomic data files with distorted waves
+settings_mixed = Settings(wavefunction=FromJAC, ionization_scheme=Atomic, 
+                         continuum_solution=DistortedWave)
+
+# Custom configuration
+settings_custom = Settings(wavefunction=FromJAC, ionization_scheme=Atomic,
+                          continuum_solution=PlaneWave, gauge=VelocityGauge)
 ```
 
 # Validation
-- Atomic number must be positive
+- Automatically enforces consistency between wavefunction source and ionization scheme
+- Prevents selection of unimplemented features
+- Provides informative warnings for automatic adjustments
+
+# See Also
+- [`Wavefunction`](@ref StrongFieldDynamics.Wavefunction): Wavefunction source enumeration
+- [`IonizationScheme`](@ref StrongFieldDynamics.IonizationScheme): Bound state calculation methods
+- [`ContinuumSolution`](@ref StrongFieldDynamics.ContinuumSolution): Continuum electron approximations
+- [`Gauge`](@ref StrongFieldDynamics.Gauge): Electromagnetic gauge choices
 """
 struct Settings
+    wavefunction::Wavefunction
     ionization_scheme::IonizationScheme
     continuum_solution::ContinuumSolution
     gauge::Gauge
 
-    function Settings(;ionization_scheme::IonizationScheme=Hydrogenic,
-                     continuum_solution::ContinuumSolution=Bessel,
+    function Settings(;wavefunction::Wavefunction=FromFile,
+                     ionization_scheme::IonizationScheme=Hydrogenic,
+                     continuum_solution::ContinuumSolution=PlaneWave,
                      gauge::Gauge=VelocityGauge)
+        
+        if wavefunction == FromJAC
+            @warn "Switching to Atomic Ionization scheme; As wavefunction is From JAC"
+            ionization_scheme = Atomic
+        end
         
         # Warning and Error
         if gauge == LengthGauge
             throw(ArgumentError("LengthGauge computations are not implemented yet!!!"))
         end
 
-        new(ionization_scheme, continuum_solution, gauge)
+        new(wavefunction, ionization_scheme, continuum_solution, gauge)
     end
 end
 
@@ -720,6 +1005,7 @@ cart = spherical2cartesian(r, θ, ϕ)
 r, θ, ϕ = 2.0, π/4, π/3
 cart = spherical2cartesian(r, θ, ϕ)
 # Returns: Cartesian(0.707..., 1.224..., 1.414...)
+```
 """
 function spherical2cartesian(r::Float64, θ::Float64, ϕ::Float64)
     x = r * sin(θ) * cos(ϕ)
