@@ -365,3 +365,66 @@ function reduced_matrix_element_uncoupled(p_partialwave::PartialWave, a_electron
     
     return result
 end
+
+
+function T0_uncoupled_new(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, m::Rational{Int64}, θ::Float64, ϕ::Float64)
+
+    
+    l = a_electron.l
+    j = a_electron.j
+    r = a_electron.r
+    u = pulse.u
+
+    # Intitialize term1, term2
+    term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; 
+
+    for lp = 0:0
+    
+        p_partialwave = StrongFieldDynamics.compute_partial_wave(lp, 0//1, p_electron, a_electron)
+
+        for m = -lp:lp
+
+            factor1 = matrix_interaction(p_partialwave, a_electron, r) * Ylm(l, m, θ, ϕ)
+            factor1_ = integrate1(pulse, a_electron, p_electron, θ, ϕ)
+            term1 += factor1 * factor1_
+
+
+            factor2 = Ylm(l, m, θ, ϕ) * inner_product(p_partialwave, a_electron, r)
+            factor2_ = exp(im * (-a_electron.ε * pulse.duration[end] + StrongFieldDynamics.Sv_general(pulse.duration[end], θ, ϕ, pulse, p_electron))) -
+                        exp(im * (-a_electron.ε * pulse.duration[begin] + StrongFieldDynamics.Sv_general(pulse.duration[begin], θ, ϕ, pulse, p_electron)))
+            term2 += factor2 * factor2_
+
+
+        end
+
+    end
+
+    return (-im * term1 - term2)
+
+end
+
+
+function matrix_interaction(p_partialwave::PartialWave, a_electron::AtomicElectron, r::Vector{Float64})
+
+    # Continuum electron partial waves radial part
+    cP = Dierckx.Spline1D(r, p_partialwave.P)
+
+    # atomic (bound) electron radial part
+    aP = Dierckx.Spline1D(r, a_electron.P)
+   
+    integral = -1.0 * quadgk(r -> cP(r) * aP(r) / r, r[1], r[end])[1]
+    
+    return integral
+end
+
+
+function integrate1(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, θ::Float64, ϕ::Float64)
+    gp(t) = StrongFieldDynamics.Sv_prime_general(t, θ, ϕ, pulse, p_electron) - a_electron.ε
+
+    ga = StrongFieldDynamics.Sv_general(pulse.duration[begin], θ, ϕ, pulse, p_electron) - a_electron.ε * pulse.duration[begin]
+    gb = StrongFieldDynamics.Sv_general(pulse.duration[end], θ, ϕ, pulse, p_electron)   - a_electron.ε * pulse.duration[end]
+
+    res = levin_integrate_approxfun(i -> 1.0, gp, pulse.duration[begin], pulse.duration[end], ga, gb)
+
+    return res
+end
