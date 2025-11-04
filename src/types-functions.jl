@@ -193,13 +193,14 @@ struct Pulse
         # Calculate the polarization vector components in spherical basis
         # u-1, u0, u+1 components
         #------------------ Birger's part ----------------------#
-        up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
-        u0 = 0.0
-        um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
-        #------------------My corrctions  ----------------------#
-        # up = -1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
+        # up = -1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
         # u0 = 0.0
-        # um = 1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
+        # um = 1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
+        #------------------My corrctions  ----------------------#
+        # Looks better for the two cycle (more closer to Danish's plot with wider patterns)
+        up = -1/sqrt(2*(1 + ϵ^2)) * (1 - helicity * ϵ)
+        u0 = 0.0
+        um = 1/sqrt(2*(1 + ϵ^2)) * (1 + helicity * ϵ)
         #
         u = OffsetVector([um, u0, up], -1:1)
 
@@ -581,11 +582,13 @@ function compute_energy_distribution(Z::Int64, pulse::Pulse;
                                     settings=Settings(), 
                                     θ::Real=pi/2, ϕ::Real=0.0,
                                     energy_range::Tuple{Float64,Float64}=(0.0, 0.5),
-                                    n_points::Int64=200,
+                                    n_points::Int64=200, coupled::Bool=true,
                                     initial_configuration="", final_configuration="")
 
     energies = range(energy_range[1], energy_range[2], length=n_points) |> collect
     distribution = zeros(Float64, n_points)
+
+    local_probability_func = coupled ? StrongFieldDynamics.probability : StrongFieldDynamics.probability_uncoupled
     
     # Generates atomic electron wave function
     # a_electron = StrongFieldDynamics.compute_atomic_electron(Z, settings.ionization_scheme) ;
@@ -610,7 +613,7 @@ function compute_energy_distribution(Z::Int64, pulse::Pulse;
     if Distributed.nworkers() > 1
         # Create a function for computing a single energy point
         compute_single_energy = function(i)
-            return StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+            return local_probability_func(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
         end
         
         # Use pmap to distribute computation across workers
@@ -618,7 +621,7 @@ function compute_energy_distribution(Z::Int64, pulse::Pulse;
     else
         # Use multithreading for single-node computation
         @showprogress Threads.@threads for i in eachindex(p_electrons)
-            distribution[i] = StrongFieldDynamics.probability(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
+            distribution[i] = local_probability_func(pulse, a_electron, p_electrons[i], float(θ), float(ϕ))
         end
     end
     
@@ -690,7 +693,8 @@ function compute_angular_distribution(Z::Int64, pulse::Pulse;
                                      n_θ::Int=1,
                                      ϕ_range::Tuple{Float64,Float64}=(0.0, 2π),
                                      n_ϕ::Int=200,
-                                    initial_configuration="", final_configuration="")
+                                     coupled::Bool=true,
+                                     initial_configuration="", final_configuration="")
     
     θs = range(θ_range[1], θ_range[2], length=n_θ) |> collect
     ϕs = range(ϕ_range[1], ϕ_range[2], length=n_ϕ) |> collect

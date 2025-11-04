@@ -289,7 +289,7 @@ function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::Cont
     term1 = zero(ComplexF64) ; term2 = zero(ComplexF64) ; term3 = zero(ComplexF64) ;
 
     # Evaluation for term1 and term2
-    for lp in 0:lp_max
+    for lp in max(0, l-1) : l+1
             # reduced matrix element
             p_partialwave = StrongFieldDynamics.compute_partial_wave(lp, 0//1, p_electron, a_electron)
             matrix_elem12 = reduced_matrix_element_uncoupled(p_partialwave, a_electron, r)
@@ -304,7 +304,7 @@ function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::Cont
                 term1 += factor1 * matrix_elem12 
 
                 # Term 2 contribution 
-                factor2 = -u[-q] * Ylm(lp, (m + q), θ, ϕ) *
+                factor2 = u[q] * Ylm(lp, (m + q), θ, ϕ) *
                             ClebschGordan(l, m, 1, q, lp, (m + q) )
                 term2 += factor2 * matrix_elem12
             end
@@ -347,7 +347,7 @@ function reduced_matrix_element_uncoupled(p_partialwave::PartialWave, a_electron
     l  = a_electron.l    ;    j  = a_electron.j
 
     # Placeholder for the inner matrix element <εp lp || p || n l>
-    prefactor = (-im)^(lp+1) * (- sqrt(2*lp + 1) ) * ClebschGordan(lp, 0, 1, 0, l, 0) 
+    prefactor = (-im)^(lp+1) * (- sqrt(2*lp + 1) ) * ClebschGordan(lp, 0, 1, 0, l, 0) * exp(-im * (p_partialwave.δ))
 
     # To further skip calculations if prefactor is zero
     if prefactor == zero(ComplexF64) return zero(ComplexF64) end
@@ -366,7 +366,8 @@ function reduced_matrix_element_uncoupled(p_partialwave::PartialWave, a_electron
     return result
 end
 
-
+#=---------------------------- Integration by Parts --------------------------------
+# tried with the integration by parts seems not working at this point
 function T0_uncoupled_new(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, m::Rational{Int64}, θ::Float64, ϕ::Float64)
 
     
@@ -428,3 +429,4 @@ function integrate1(pulse::Pulse, a_electron::AtomicElectron, p_electron::Contin
 
     return res
 end
+---------------------------------------------------------------------=#
