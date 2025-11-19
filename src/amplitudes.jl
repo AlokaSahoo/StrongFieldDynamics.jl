@@ -56,7 +56,7 @@ function T0(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElect
                 term1 += factor1 * matrix_elem12 
 
                 # Term 2 contribution 
-                factor2 = -u[-q] * Ylm(lp, (mj - msp + q), θ, ϕ) *
+                factor2 = conj(u[q]) * Ylm(lp, (mj - msp + q), θ, ϕ) *
                             ClebschGordan(lp, (mj - msp + q), 1//2, msp, jp, (mj + q)) * 
                             ClebschGordan(j, mj, 1, q, jp, mj + q)
                 term2 += factor2 * matrix_elem12
@@ -277,8 +277,6 @@ end
 Computes the direct scattering amplitude 
 """
 function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::ContinuumElectron, m::Rational{Int64}, θ::Float64, ϕ::Float64)
-    # Maximum number of partial waves
-    lp_max = 3
 
     l = a_electron.l
     j = a_electron.j
@@ -304,7 +302,7 @@ function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::Cont
                 term1 += factor1 * matrix_elem12 
 
                 # Term 2 contribution 
-                factor2 = u[q] * Ylm(lp, (m + q), θ, ϕ) *
+                factor2 = conj(u[q]) * Ylm(lp, (m + q), θ, ϕ) *
                             ClebschGordan(l, m, 1, q, lp, (m + q) )
                 term2 += factor2 * matrix_elem12
             end
@@ -316,8 +314,8 @@ function T0_uncoupled(pulse::Pulse, a_electron::AtomicElectron, p_electron::Cont
                 term3 = factor3 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F2_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ)
             end
     end
-    term1 = term1 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
-    term2 = term2 * (-im * sqrt(2 / pi) ) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
+    term1 = term1 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=1)
+    term2 = term2 * (-im / sqrt(2 * pi)) * StrongFieldDynamics.F1_integral_levin_approxfun(pulse, a_electron, p_electron, θ, ϕ ; sign=-1)
 
     # Total result
     return term1 + term2 + term3
